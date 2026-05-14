@@ -20,6 +20,7 @@ import {
   getAssignmentsByItemId,
   getSelectionFilteredSubs,
   getSelectionViewData,
+  moveSelectionReviewSubToEnd,
   persistSelectionData,
   persistWorkItems,
   removeSelectionReviewSub,
@@ -84,8 +85,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
 
     const next = [...ids];
     const [movedId] = next.splice(fromIndex, 1);
-    const targetIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
-    next.splice(targetIndex, 0, movedId);
+    next.splice(toIndex, 0, movedId);
     return next;
   };
 
@@ -225,6 +225,15 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
       return;
     }
 
+    if (activeType === 'review' && overType === 'review-zone') {
+      const next = moveSelectionReviewSubToEnd(selectionData, activeItem.id, draggedId);
+      if (!next) return;
+      updateSelectionData(next);
+      const nextReview = next.reviewByItemId[activeItem.id] ?? [];
+      handleShortlistChanged(activeItem.id, nextReview.length);
+      return;
+    }
+
     if (activeType === 'database' && overType === 'database') {
       setVendorOrder((current) => reorderIds(current, draggedId, overId));
       return;
@@ -279,6 +288,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
             <ShortlistReviewPane
               activeItem={activeItem}
               activeAssignments={activeAssignments}
+              activeDragSource={draggedSubSource}
               removeSub={handleRemoveSub}
               setWorkItemStatus={handleSetWorkItemStatus}
             />

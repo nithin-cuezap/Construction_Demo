@@ -1,7 +1,7 @@
 export interface Subcontractor {
   id: string;
   name: string;
-  trade: string;
+  trades: string[];
   rating: number;
   projects: number;
   responseSpeed: string;
@@ -66,6 +66,7 @@ export interface TenderPackage {
   id: string;
   packageName: string;
   packageControlNumber: string;
+  projectDescription?: string;
   tenderSubmissionDueDate: string;
   rfqDueDate: string;
   subContractorBidSubmissionDueDate: string;

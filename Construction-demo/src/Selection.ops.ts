@@ -166,8 +166,29 @@ export function reorderSelectionReviewSub(
 
   const nextReview = [...currentReview];
   const [movedSub] = nextReview.splice(fromIndex, 1);
-  const targetIndex = fromIndex < overIndex ? overIndex - 1 : overIndex;
-  nextReview.splice(targetIndex, 0, movedSub);
+  nextReview.splice(overIndex, 0, movedSub);
+
+  return {
+    ...selectionData,
+    reviewByItemId: {
+      ...selectionData.reviewByItemId,
+      [itemId]: nextReview,
+    },
+  };
+}
+
+export function moveSelectionReviewSubToEnd(
+  selectionData: SelectionDataState,
+  itemId: string,
+  subId: string,
+): SelectionDataState | null {
+  const currentReview = selectionData.reviewByItemId[itemId] ?? [];
+  const fromIndex = currentReview.findIndex((sub) => sub.id === subId);
+  if (fromIndex === -1 || fromIndex === currentReview.length - 1) return null;
+
+  const nextReview = [...currentReview];
+  const [movedSub] = nextReview.splice(fromIndex, 1);
+  nextReview.push(movedSub);
 
   return {
     ...selectionData,
@@ -214,6 +235,8 @@ export function getSelectionFilteredSubs(
   assignedIds: Set<string>,
 ): Subcontractor[] {
   return subcontractors.filter(
-    (sub) => sub.trade === activeItem?.sectionCode && !assignedIds.has(sub.id),
+    (sub) =>
+      sub.trades.includes(activeItem?.sectionCode ?? "") &&
+      !assignedIds.has(sub.id),
   );
 }

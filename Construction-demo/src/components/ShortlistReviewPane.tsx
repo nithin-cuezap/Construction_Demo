@@ -6,11 +6,12 @@ import ReviewDropZone from './ReviewDropZone';
 interface ShortlistReviewPaneProps {
   activeItem: WorkItem;
   activeAssignments: Assignment;
+  activeDragSource: 'database' | 'review' | null;
   removeSub: (zone: 'carried' | 'backup' | 'review', subId: string) => void;
   setWorkItemStatus: (itemId: string, status: string) => void;
 }
 
-export default function ShortlistReviewPane({ activeItem, activeAssignments, removeSub, setWorkItemStatus }: ShortlistReviewPaneProps) {
+export default function ShortlistReviewPane({ activeItem, activeAssignments, activeDragSource, removeSub, setWorkItemStatus }: ShortlistReviewPaneProps) {
   return (
     <main className="flex w-full min-w-0 flex-col border-l border-slate-200 bg-white text-xs xl:text-sm lg:basis-0 lg:flex-1">
       <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
@@ -22,7 +23,7 @@ export default function ShortlistReviewPane({ activeItem, activeAssignments, rem
             </h3>
             <span className="text-[11px] xl:text-xs text-slate-500 font-medium">{activeAssignments.review.length} Added</span>
           </div>
-          <ReviewDropZone activeAssignments={activeAssignments} removeSub={removeSub} />
+          <ReviewDropZone activeAssignments={activeAssignments} removeSub={removeSub} activeDragSource={activeDragSource} />
           <div className="flex items-center justify-end mt-4">
             <Button variant="primary" className="flex items-center gap-2" disabled={activeItem.status === 'Shortlisting Completed' || activeItem.status === 'Draft'} onClick={() => setWorkItemStatus(activeItem.id, 'Shortlisting Completed')}>
               Complete Shortlisting
