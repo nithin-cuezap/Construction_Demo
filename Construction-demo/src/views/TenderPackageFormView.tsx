@@ -799,9 +799,10 @@ export default function TenderPackageFormView({
           <h2 className="text-2xl font-semibold text-slate-900 mb-6">Confidential & Reference Documents</h2>
 
           {/* Confidential Documents */}
-          <div className="mb-8">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Confidential Documents</h3>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-slate-50 transition-colors">
+          <div className="mb-3 rounded-lg border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/50 p-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-900">Confidential Documents</h3>
+            <p className="mt-1 text-xs text-blue-800">Visible only to Organization users</p>
+            <div className="mt-3 border-2 border-dashed border-blue-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-blue-100/40 transition-colors">
               <input
                 type="file"
                 id="confidential-upload"
@@ -840,9 +841,10 @@ export default function TenderPackageFormView({
           </div>
 
           {/* Reference Documents */}
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Reference Documents</h3>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-slate-50 transition-colors">
+          <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/50 p-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-900">Reference Documents</h3>
+            <p className="mt-1 text-xs text-amber-800">Will be shared to sub-contractors</p>
+            <div className="mt-3 border-2 border-dashed border-amber-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-amber-100/40 transition-colors">
               <input
                 type="file"
                 id="reference-upload"
