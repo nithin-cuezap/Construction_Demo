@@ -36,6 +36,7 @@ export default function App() {
   const [tenderPackages, setTenderPackages] = useState<TenderPackage[]>(
     () => getTenderPackagesData(),
   );
+  const [activeTenderPackage, setActiveTenderPackage] = useState<TenderPackage | null>(null);
 
   const updateTenderPackages = (next: TenderPackage[]) => {
     setTenderPackages(next);
@@ -68,12 +69,13 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
-      <Header />
+      <Header activeTenderPackage={activeTenderPackage} />
       <div className="flex flex-1 overflow-hidden">
         <TenderPackageView
           tenderPackages={tenderPackages}
           onUpdatePackages={updateTenderPackages}
           onPackageSaved={() => undefined}
+          onActivePackageChange={setActiveTenderPackage}
         />
       </div>
     </div>

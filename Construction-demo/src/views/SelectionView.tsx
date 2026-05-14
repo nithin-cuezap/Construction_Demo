@@ -253,7 +253,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
 
   return (
     <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex h-full w-full min-w-0 flex-col lg:flex-row">
+      <div className="flex h-full w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/60 shadow-[0_1px_0_rgba(255,255,255,0.8),0_12px_32px_rgba(180,83,9,0.08)] lg:flex-row">
         <WorkItemsPane
           workItems={workItems}
           activeItem={activeItem}
@@ -266,7 +266,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
           onDeleteWorkItem={handleDeleteWorkItem}
         />
         <div className="flex w-full min-w-0 flex-col lg:w-1/2">
-          <div className="border-l border-slate-200 bg-white p-4">
+          <div className="border-l border-amber-200/70 bg-amber-50/80 p-4 backdrop-blur-sm">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500 xl:text-sm">
               <span>{activeItem.sectionCode}</span>
               <ChevronRight size={14} />

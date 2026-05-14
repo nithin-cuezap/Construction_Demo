@@ -8,12 +8,14 @@ interface TenderPackageViewProps {
   tenderPackages: TenderPackage[];
   onUpdatePackages: (packages: TenderPackage[]) => void;
   onPackageSaved: () => void;
+  onActivePackageChange?: (pkg: TenderPackage | null) => void;
 }
 
 export default function TenderPackageView({
   tenderPackages,
   onUpdatePackages,
   onPackageSaved,
+  onActivePackageChange,
 }: TenderPackageViewProps) {
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
@@ -41,6 +43,7 @@ export default function TenderPackageView({
     setEditingPackageId(null);
     setFormStep(1);
     setViewMode('form');
+    onActivePackageChange?.(null);
   };
 
   const handleEditPackage = (packageId: string) => {
@@ -48,12 +51,14 @@ export default function TenderPackageView({
     setEditingPackageId(packageId);
     setFormStep(existingPackage ? (existingPackage.workflowStage ?? getFormStepForStatus(existingPackage.status)) : 1);
     setViewMode('form');
+    onActivePackageChange?.(existingPackage ?? null);
   };
 
   const handleBackToList = () => {
     setEditingPackageId(null);
     setFormStep(1);
     setViewMode('list');
+    onActivePackageChange?.(null);
   };
 
   const handleSavePackage = (packageData: TenderPackage) => {
@@ -62,6 +67,7 @@ export default function TenderPackageView({
     setFormStep(1);
     setViewMode('list');
     onPackageSaved();
+    onActivePackageChange?.(null);
   };
 
   const handleDeletePackage = (packageId: string) => {
@@ -86,9 +92,11 @@ export default function TenderPackageView({
           editingPackage={editingPackage}
           currentStep={formStep}
           onSaveAndContinue={(packageData, nextStep) => {
-            onUpdatePackages(savePackage(tenderPackages, { ...packageData, workflowStage: nextStep }, editingPackageId));
+            const saved = { ...packageData, workflowStage: nextStep };
+            onUpdatePackages(savePackage(tenderPackages, saved, editingPackageId));
             setEditingPackageId(packageData.id);
             setFormStep(nextStep);
+            onActivePackageChange?.(saved);
           }}
           onSaveAndExit={handleSavePackage}
           onCancel={handleBackToList}
