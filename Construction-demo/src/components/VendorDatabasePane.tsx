@@ -8,7 +8,7 @@ interface VendorDatabasePaneProps {
 
 export default function VendorDatabasePane({ filteredSubs }: VendorDatabasePaneProps) {
   return (
-    <aside className="w-full lg:w-1/4 bg-white border-l border-slate-200 flex flex-col min-w-0 z-10 text-xs xl:text-sm">
+    <aside className="z-10 flex w-full min-w-0 flex-col border-l border-slate-200 bg-white text-xs xl:text-sm lg:basis-0 lg:flex-1">
       <div className="p-4 border-b border-slate-200 bg-slate-50">
         <div className="flex justify-between items-center mb-3">
           <h2 className="font-semibold text-slate-800">Vendor Database</h2>

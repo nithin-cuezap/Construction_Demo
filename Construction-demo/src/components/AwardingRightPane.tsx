@@ -5,7 +5,7 @@ import Button from './Button';
 import CarriedDropZone from './CarriedDropZone';
 
 interface AwardingCenterPaneProps {
-  activeItem: { division: string; section: string };
+  activeItem: { sectionCode: string; sectionName: string };
   activeAssignments: Assignment;
   removeSub: (zone: 'carried' | 'backup' | 'review', subId: string) => void;
   advanceWorkflow: () => void;
@@ -17,9 +17,9 @@ export default function AwardingCenterPane({ activeItem, activeAssignments, remo
     <main className="flex-1 flex flex-col bg-white min-w-125">
       <div className="p-6 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-2 text-sm font-medium text-slate-500 mb-2">
-          <span>{activeItem.division}</span>
+          <span>{activeItem.sectionCode}</span>
           <ChevronRight size={14} />
-          <span className="text-slate-900">{activeItem.section}</span>
+          <span className="text-slate-900">{activeItem.sectionName}</span>
         </div>
         <h2 className="text-2xl font-bold text-slate-900">Subcontractor Selection</h2>
         <p className="text-slate-500 mt-1 text-sm">Drag and drop vendors from the database to build your shortlist.</p>

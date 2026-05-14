@@ -5,7 +5,7 @@ import AssignedCard from './AssignedCard';
 import EmptyDropZone from './EmptyDropZone';
 
 export default function ReviewDropZone({ activeAssignments, removeSub }: { activeAssignments: Assignment, removeSub: (zone: 'carried' | 'backup' | 'review', subId: string) => void }) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'review' });
+  const { setNodeRef, isOver } = useDroppable({ id: 'review', data: { listType: 'review-zone' } });
   return (
     <div
       ref={setNodeRef}
@@ -15,9 +15,9 @@ export default function ReviewDropZone({ activeAssignments, removeSub }: { activ
       }`}
     >
       {activeAssignments.review.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           {activeAssignments.review.map((sub: import('../types').Subcontractor) => (
-            <AssignedCard key={sub.id} sub={sub} onRemove={() => removeSub('review', sub.id)} type="review" />
+            <AssignedCard key={sub.id} sub={sub} onRemove={() => removeSub('review', sub.id)} type="review" sortable hideRemove={false} />
           ))}
         </div>
       ) : (

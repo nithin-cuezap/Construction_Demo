@@ -34,20 +34,25 @@ export function savePackage(
   };
 
   if (editingPackageId) {
+    mockDb.ensureWorkItemsForPackage(packageWithTransition.id);
     return tenderPackages.map((pkg) =>
       pkg.id === editingPackageId ? packageWithTransition : pkg,
     );
   }
 
-  return [
-    ...tenderPackages,
-    { ...packageWithTransition, createdAt: new Date().toISOString() },
-  ];
+  const packageToInsert = {
+    ...packageWithTransition,
+    createdAt: new Date().toISOString(),
+  };
+  mockDb.ensureWorkItemsForPackage(packageToInsert.id);
+
+  return [...tenderPackages, packageToInsert];
 }
 
 export function deletePackage(
   tenderPackages: TenderPackage[],
   packageId: string,
 ): TenderPackage[] {
+  mockDb.deleteWorkItemsForPackage(packageId);
   return tenderPackages.filter((pkg) => pkg.id !== packageId);
 }

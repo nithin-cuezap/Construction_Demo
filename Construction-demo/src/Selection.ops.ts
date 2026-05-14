@@ -15,17 +15,23 @@ interface SelectionViewDataSnapshot {
   subcontractors: Subcontractor[];
 }
 
-export function getSelectionViewData(): SelectionViewDataSnapshot {
+export function getSelectionViewData(
+  tenderPackageId: string,
+): SelectionViewDataSnapshot {
+  mockDb.ensureWorkItemsForPackage(tenderPackageId);
   return {
-    workItems: mockDb.getWorkItems(),
+    workItems: mockDb.getWorkItems(tenderPackageId),
     selectionData: mockDb.getSelectionData(),
     awardingData: mockDb.getAwardingData(),
     subcontractors: mockDb.getSubcontractors(),
   };
 }
 
-export function persistWorkItems(workItems: WorkItem[]) {
-  mockDb.setWorkItems(workItems);
+export function persistWorkItems(
+  tenderPackageId: string,
+  workItems: WorkItem[],
+) {
+  mockDb.setWorkItems(tenderPackageId, workItems);
 }
 
 export function persistSelectionData(selectionData: SelectionDataState) {
@@ -54,19 +60,35 @@ export function setWorkItemStatuses(
   });
 }
 
+export function areAllWorkItemsShortlistingCompleted(
+  workItems: WorkItem[],
+): boolean {
+  return workItems.every((item) => item.status === "Shortlisting Completed");
+}
+
 export function addWorkItem(
   workItems: WorkItem[],
-  division: string,
-  section: string,
+  tenderPackageId: string,
+  sectionCode: string,
+  sectionName: string,
+  description: string,
 ): { workItems: WorkItem[]; createdItemId: string } | null {
-  const normalizedDivision = division.trim();
-  const normalizedSection = section.trim();
-  if (!normalizedDivision || !normalizedSection) return null;
+  const normalizedSectionCode = sectionCode.trim();
+  const normalizedSectionName = sectionName.trim();
+  const normalizedDescription = description.trim();
+  if (
+    !normalizedSectionCode ||
+    !normalizedSectionName ||
+    !normalizedDescription
+  )
+    return null;
 
   const nextWorkItem: WorkItem = {
     id: `wi-${Date.now()}`,
-    division: normalizedDivision,
-    section: normalizedSection,
+    tenderPackageId,
+    sectionCode: normalizedSectionCode,
+    sectionName: normalizedSectionName,
+    description: normalizedDescription,
     status: "Draft",
   };
 
@@ -93,6 +115,28 @@ export function addSelectionReviewSub(
   };
 }
 
+export function addSelectionReviewSubAt(
+  selectionData: SelectionDataState,
+  itemId: string,
+  sub: Subcontractor,
+  index: number,
+): SelectionDataState | null {
+  const currentReview = selectionData.reviewByItemId[itemId] ?? [];
+  if (currentReview.some((reviewSub) => reviewSub.id === sub.id)) return null;
+
+  const nextReview = [...currentReview];
+  const normalizedIndex = Math.max(0, Math.min(index, nextReview.length));
+  nextReview.splice(normalizedIndex, 0, sub);
+
+  return {
+    ...selectionData,
+    reviewByItemId: {
+      ...selectionData.reviewByItemId,
+      [itemId]: nextReview,
+    },
+  };
+}
+
 export function removeSelectionReviewSub(
   selectionData: SelectionDataState,
   itemId: string,
@@ -104,6 +148,32 @@ export function removeSelectionReviewSub(
     reviewByItemId: {
       ...selectionData.reviewByItemId,
       [itemId]: currentReview.filter((sub) => sub.id !== subId),
+    },
+  };
+}
+
+export function reorderSelectionReviewSub(
+  selectionData: SelectionDataState,
+  itemId: string,
+  subId: string,
+  overSubId: string,
+): SelectionDataState | null {
+  const currentReview = selectionData.reviewByItemId[itemId] ?? [];
+  const fromIndex = currentReview.findIndex((sub) => sub.id === subId);
+  const overIndex = currentReview.findIndex((sub) => sub.id === overSubId);
+  if (fromIndex === -1 || overIndex === -1 || fromIndex === overIndex)
+    return null;
+
+  const nextReview = [...currentReview];
+  const [movedSub] = nextReview.splice(fromIndex, 1);
+  const targetIndex = fromIndex < overIndex ? overIndex - 1 : overIndex;
+  nextReview.splice(targetIndex, 0, movedSub);
+
+  return {
+    ...selectionData,
+    reviewByItemId: {
+      ...selectionData.reviewByItemId,
+      [itemId]: nextReview,
     },
   };
 }
@@ -144,6 +214,6 @@ export function getSelectionFilteredSubs(
   assignedIds: Set<string>,
 ): Subcontractor[] {
   return subcontractors.filter(
-    (sub) => sub.trade === activeItem?.division && !assignedIds.has(sub.id),
+    (sub) => sub.trade === activeItem?.sectionCode && !assignedIds.has(sub.id),
   );
 }

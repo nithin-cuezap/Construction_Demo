@@ -28,8 +28,10 @@ export interface AwardingDataState {
 
 export interface WorkItem {
   id: string;
-  division: string;
-  section: string;
+  tenderPackageId: string;
+  sectionCode: string;
+  sectionName: string;
+  description: string;
   status: string;
 }
 
@@ -64,6 +66,10 @@ export interface TenderPackage {
   id: string;
   packageName: string;
   packageControlNumber: string;
+  tenderSubmissionDueDate: string;
+  rfqDueDate: string;
+  subContractorBidSubmissionDueDate: string;
+  subContractorRfqDueDate: string;
   workflowStage: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   siteAddress: Address;
   customerName: string;

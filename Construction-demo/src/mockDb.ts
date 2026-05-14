@@ -16,7 +16,7 @@ export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 
 interface MockDbState {
   workflowStage: WorkflowStage;
-  workItems: WorkItem[];
+  workItemsByPackageId: Record<string, WorkItem[]>;
   subcontractors: Subcontractor[];
   selectionData: SelectionDataState;
   invitationData: InvitationDataState;
@@ -24,38 +24,50 @@ interface MockDbState {
   tenderPackages: TenderPackage[];
 }
 
-const INITIAL_WORK_ITEMS: WorkItem[] = [
+const INITIAL_PACKAGE_ID = "tp-1";
+
+const INITIAL_WORK_ITEM_TEMPLATES: Array<
+  Pick<WorkItem, "sectionCode" | "sectionName" | "description">
+> = [
   {
-    id: "wi-1",
-    division: "03 Concrete",
-    section: "03 30 00 Cast-in-Place",
-    status: "Draft",
+    sectionCode: "03 30 00",
+    sectionName: "Cast-in-Place Concrete",
+    description: "Concrete structural forming and placement",
   },
   {
-    id: "wi-2",
-    division: "09 Finishes",
-    section: "09 22 00 Metal Supports",
-    status: "Draft",
+    sectionCode: "09 22 00",
+    sectionName: "Metal Supports for Plaster",
+    description: "Metal support framing for plaster and gypsum board",
   },
   {
-    id: "wi-3",
-    division: "09 Finishes",
-    section: "09 90 00 Painting",
-    status: "Draft",
+    sectionCode: "09 90 00",
+    sectionName: "Painting and Coating",
+    description: "Interior and exterior painting and coating work",
   },
   {
-    id: "wi-4",
-    division: "26 Electrical",
-    section: "26 05 00 Common Work Results",
-    status: "Draft",
+    sectionCode: "26 05 00",
+    sectionName: "Common Work Results for Electrical",
+    description: "Electrical conduit, wiring, and common installations",
   },
 ];
+
+const createInitialWorkItemsForPackage = (
+  tenderPackageId: string,
+): WorkItem[] =>
+  INITIAL_WORK_ITEM_TEMPLATES.map((template, index) => ({
+    id: `${tenderPackageId}-wi-${index + 1}`,
+    tenderPackageId,
+    sectionCode: template.sectionCode,
+    sectionName: template.sectionName,
+    description: template.description,
+    status: "Draft",
+  }));
 
 const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-1",
     name: "Apex Concrete Works",
-    trade: "03 Concrete",
+    trade: "03 30 00",
     rating: 4.8,
     projects: 24,
     responseSpeed: "Fast",
@@ -63,7 +75,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-2",
     name: "Solid Foundations Ltd.",
-    trade: "03 Concrete",
+    trade: "03 30 00",
     rating: 4.2,
     projects: 12,
     responseSpeed: "Average",
@@ -71,7 +83,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-3",
     name: "City Pours",
-    trade: "03 Concrete",
+    trade: "03 30 00",
     rating: 3.9,
     projects: 8,
     responseSpeed: "Slow",
@@ -79,7 +91,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-4",
     name: "Prime Painters",
-    trade: "09 Finishes",
+    trade: "09 90 00",
     rating: 5.0,
     projects: 41,
     responseSpeed: "Fast",
@@ -87,7 +99,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-5",
     name: "Elite Drywall & Framing",
-    trade: "09 Finishes",
+    trade: "09 22 00",
     rating: 4.5,
     projects: 19,
     responseSpeed: "Fast",
@@ -95,7 +107,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-6",
     name: "ProCoat Finishes",
-    trade: "09 Finishes",
+    trade: "09 90 00",
     rating: 4.1,
     projects: 15,
     responseSpeed: "Average",
@@ -103,7 +115,7 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
   {
     id: "sub-7",
     name: "Volt Masters",
-    trade: "26 Electrical",
+    trade: "26 05 00",
     rating: 4.9,
     projects: 33,
     responseSpeed: "Fast",
@@ -112,9 +124,13 @@ const INITIAL_SUBCONTRACTORS: Subcontractor[] = [
 
 const INITIAL_TENDER_PACKAGES: TenderPackage[] = [
   {
-    id: "tp-1",
+    id: INITIAL_PACKAGE_ID,
     packageName: "Downtown Office Complex - Phase 1",
     packageControlNumber: "TP-001-05132026",
+    tenderSubmissionDueDate: "2026-06-30",
+    rfqDueDate: "2026-06-20",
+    subContractorBidSubmissionDueDate: "2026-06-25",
+    subContractorRfqDueDate: "2026-06-18",
     workflowStage: 1,
     siteAddress: {
       street: "123 Main Street",
@@ -142,7 +158,9 @@ const INITIAL_TENDER_PACKAGES: TenderPackage[] = [
 
 const db: MockDbState = {
   workflowStage: "TenderPackages",
-  workItems: INITIAL_WORK_ITEMS,
+  workItemsByPackageId: {
+    [INITIAL_PACKAGE_ID]: createInitialWorkItemsForPackage(INITIAL_PACKAGE_ID),
+  },
   subcontractors: INITIAL_SUBCONTRACTORS,
   selectionData: {
     reviewByItemId: {},
@@ -172,11 +190,61 @@ export const mockDb = {
     db.workflowStage = stage;
   },
 
-  getWorkItems(): WorkItem[] {
-    return clone(db.workItems);
+  getWorkItems(tenderPackageId: string): WorkItem[] {
+    return clone(db.workItemsByPackageId[tenderPackageId] ?? []);
   },
-  setWorkItems(nextWorkItems: WorkItem[]) {
-    db.workItems = clone(nextWorkItems);
+  setWorkItems(tenderPackageId: string, nextWorkItems: WorkItem[]) {
+    db.workItemsByPackageId[tenderPackageId] = clone(nextWorkItems);
+  },
+  ensureWorkItemsForPackage(tenderPackageId: string) {
+    if (!db.workItemsByPackageId[tenderPackageId]) {
+      db.workItemsByPackageId[tenderPackageId] =
+        createInitialWorkItemsForPackage(tenderPackageId);
+    }
+  },
+  deleteWorkItemsForPackage(tenderPackageId: string) {
+    const removedItemIds = new Set(
+      (db.workItemsByPackageId[tenderPackageId] ?? []).map((item) => item.id),
+    );
+
+    if (removedItemIds.size === 0) {
+      return;
+    }
+
+    const { [tenderPackageId]: _removedWorkItems, ...remainingWorkItems } =
+      db.workItemsByPackageId;
+    void _removedWorkItems;
+    db.workItemsByPackageId = remainingWorkItems;
+
+    db.selectionData = {
+      ...db.selectionData,
+      reviewByItemId: Object.fromEntries(
+        Object.entries(db.selectionData.reviewByItemId).filter(
+          ([itemId]) => !removedItemIds.has(itemId),
+        ),
+      ),
+    };
+
+    db.invitationData = {
+      ...db.invitationData,
+      notesByItemId: Object.fromEntries(
+        Object.entries(db.invitationData.notesByItemId).filter(
+          ([itemId]) => !removedItemIds.has(itemId),
+        ),
+      ),
+      sentItemIds: db.invitationData.sentItemIds.filter(
+        (itemId) => !removedItemIds.has(itemId),
+      ),
+    };
+
+    db.awardingData = {
+      ...db.awardingData,
+      decisionsByItemId: Object.fromEntries(
+        Object.entries(db.awardingData.decisionsByItemId).filter(
+          ([itemId]) => !removedItemIds.has(itemId),
+        ),
+      ),
+    };
   },
 
   getSubcontractors(): Subcontractor[] {

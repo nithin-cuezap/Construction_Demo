@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Button from '../components/Button';
+import { areAllWorkItemsShortlistingCompleted, getSelectionViewData } from '../Selection.ops';
 import { getNextPackageControlNumber } from '../TenderPackage.ops';
 import type { Address, ContactDetails, TenderPackage } from '../types';
 import SelectionView from './SelectionView';
@@ -39,11 +40,13 @@ const getOpenStreetMapEmbedUrl = (latitude: number, longitude: number) => {
     return null;
   }
 
-  const delta = 0.01;
-  const left = Math.max(-180, longitude - delta);
-  const right = Math.min(180, longitude + delta);
-  const top = Math.min(90, latitude + delta);
-  const bottom = Math.max(-90, latitude - delta);
+  // ~0.5 mile radius: 0.5 miles ≈ 0.008° latitude; longitude degree length shrinks with cos(lat)
+  const latDelta = 0.008;
+  const lonDelta = latDelta / Math.cos((latitude * Math.PI) / 180);
+  const left = Math.max(-180, longitude - lonDelta);
+  const right = Math.min(180, longitude + lonDelta);
+  const top = Math.min(90, latitude + latDelta);
+  const bottom = Math.max(-90, latitude - latDelta);
 
   return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${latitude}%2C${longitude}`;
 };
@@ -65,6 +68,8 @@ const buildSiteAddressFromNominatim = (result: NominatimSearchResult): Address =
   };
 };
 
+const hasTextValue = (value: string | undefined | null) => (value || '').trim().length > 0;
+
 export default function TenderPackageFormView({
   editingPackage,
   currentStep,
@@ -72,6 +77,7 @@ export default function TenderPackageFormView({
   onSaveAndExit,
   onCancel,
 }: TenderPackageFormViewProps) {
+  const [formPackageId] = useState(() => editingPackage?.id || `tp-${Date.now()}`);
   const STEP_ORDER = [1, 2, 3, 4, 5, 6, 7] as const;
   const TOTAL_STEPS = 7;
   const STEP_LABELS: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, string> = {
@@ -96,6 +102,10 @@ export default function TenderPackageFormView({
   const [formData, setFormData] = useState({
     packageName: editingPackage?.packageName || '',
     packageControlNumber: editingPackage?.packageControlNumber || getNextPackageControlNumber(),
+    tenderSubmissionDueDate: editingPackage?.tenderSubmissionDueDate || '',
+    rfqDueDate: editingPackage?.rfqDueDate || '',
+    subContractorBidSubmissionDueDate: editingPackage?.subContractorBidSubmissionDueDate || '',
+    subContractorRfqDueDate: editingPackage?.subContractorRfqDueDate || '',
     workflowStage: editingPackage?.workflowStage || currentStep,
     siteAddress: editingPackage?.siteAddress || {
       street: '',
@@ -130,20 +140,71 @@ export default function TenderPackageFormView({
       file: null as File | null,
     })) || []
   );
+  const [isShortlistingComplete, setIsShortlistingComplete] = useState(() =>
+    areAllWorkItemsShortlistingCompleted(
+      getSelectionViewData(formPackageId).workItems,
+    ),
+  );
 
   const [addressSuggestions, setAddressSuggestions] = useState<NominatimSearchResult[]>([]);
   const [isAddressSearchLoading, setIsAddressSearchLoading] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState('');
   const [isAddressDropdownOpen, setIsAddressDropdownOpen] = useState(false);
+  const [hasStartedAddressTyping, setHasStartedAddressTyping] = useState(false);
+  const [isPrimarySectionEditing, setIsPrimarySectionEditing] = useState(() =>
+    !editingPackage ||
+    ![
+      editingPackage.packageName,
+      editingPackage.tenderSubmissionDueDate,
+      editingPackage.rfqDueDate,
+    ].every((value) => hasTextValue(value)),
+  );
+  const [isSubContractorSectionEditing, setIsSubContractorSectionEditing] = useState(() =>
+    !editingPackage ||
+    ![
+      editingPackage.subContractorBidSubmissionDueDate,
+      editingPackage.subContractorRfqDueDate,
+    ].every((value) => hasTextValue(value)),
+  );
+  const [isSiteAddressSectionEditing, setIsSiteAddressSectionEditing] = useState(() => {
+    if (!editingPackage) {
+      return true;
+    }
+
+    const address = editingPackage.siteAddress;
+    return ![
+      address.street,
+      address.city,
+      address.state,
+      address.zipCode,
+      address.country,
+    ].some((value) => hasTextValue(value));
+  });
+  const [isCustomerSectionEditing, setIsCustomerSectionEditing] = useState(() => {
+    if (!editingPackage) {
+      return true;
+    }
+
+    const contact = editingPackage.customerContactDetails;
+    return ![
+      editingPackage.customerName,
+      contact.name,
+      contact.email,
+      contact.phone,
+      contact.mobile,
+      contact.title,
+    ].some((value) => hasTextValue(value));
+  });
   const mapEmbedUrl = getOpenStreetMapEmbedUrl(formData.siteAddress.latitude, formData.siteAddress.longitude);
 
   useEffect(() => {
+    if (!hasStartedAddressTyping) {
+      return;
+    }
+
     const query = formData.siteAddress.street.trim();
 
     if (query.length < 3) {
-      setAddressSuggestions([]);
-      setAddressSearchError('');
-      setIsAddressSearchLoading(false);
       return;
     }
 
@@ -187,7 +248,7 @@ export default function TenderPackageFormView({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [formData.siteAddress.street]);
+  }, [formData.siteAddress.street, hasStartedAddressTyping]);
 
   const handleAddressChange = (field: keyof Address, value: string | number) => {
     setFormData((prev) => ({
@@ -197,6 +258,19 @@ export default function TenderPackageFormView({
         [field]: field === 'latitude' || field === 'longitude' ? Number.parseFloat(String(value)) || 0 : value,
       },
     }));
+  };
+
+  const handleStreetInputChange = (value: string) => {
+    setHasStartedAddressTyping(true);
+
+    if (value.trim().length < 3) {
+      setAddressSuggestions([]);
+      setAddressSearchError('');
+      setIsAddressSearchLoading(false);
+      setIsAddressDropdownOpen(false);
+    }
+
+    handleAddressChange('street', value);
   };
 
   const handleAddressSuggestionSelect = (result: NominatimSearchResult) => {
@@ -210,6 +284,7 @@ export default function TenderPackageFormView({
     setAddressSuggestions([]);
     setIsAddressDropdownOpen(false);
     setAddressSearchError('');
+    setHasStartedAddressTyping(false);
   };
 
   const handleContactChange = (field: keyof ContactDetails, value: string) => {
@@ -258,7 +333,7 @@ export default function TenderPackageFormView({
 
   const buildPackageToSave = (): TenderPackage => {
     return {
-      id: editingPackage?.id || `tp-${Date.now()}`,
+      id: formPackageId,
       ...formData,
       workflowStage: currentStep,
       status: STEP_STATUS[currentStep],
@@ -273,6 +348,7 @@ export default function TenderPackageFormView({
 
   const handleNextStep = () => {
     if (currentStep === 1 && !validatePrimaryInformation()) return;
+    if (currentStep === 3 && !isShortlistingComplete) return;
     if (currentStep < TOTAL_STEPS) {
       const nextStep = (currentStep + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
       onSaveAndContinue(buildPackageToSave(), nextStep);
@@ -295,203 +371,424 @@ export default function TenderPackageFormView({
   void STEP_ORDER;
 
   return (
-    <div className={`flex flex-col h-full w-full ${currentStep === 3 ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`}>
+    <div className={`flex flex-col h-full w-full ${currentStep === 3 ? 'p-0 overflow-hidden' : 'p-4 overflow-auto'}`}>
       {/* Step 1: Primary Information */}
       {currentStep === 1 && (
-        <div className="bg-white p-6 rounded-lg border border-slate-200 mb-6">
-          <h2 className="text-2xl font-semibold text-slate-900 mb-6">Primary Information</h2>
+        <div className="bg-white p-4 rounded-lg border border-slate-200 mb-4">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Primary Information</h2>
 
-          <div className="grid grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Package Name *</label>
-              <input
-                type="text"
-                value={formData.packageName}
-                onChange={(e) => setFormData({ ...formData, packageName: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Package Name"
-              />
+          <div className="mb-3 rounded-lg border border-blue-200 border-l-4 border-l-blue-500 bg-blue-50/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-900">Package Details *</h3>
+              <Button
+                type="button"
+                onClick={() => setIsPrimarySectionEditing((prev) => !prev)}
+                className="px-2 py-1 border border-blue-300 rounded text-[11px] font-medium text-blue-800 hover:bg-blue-100"
+              >
+                {isPrimarySectionEditing ? 'Done' : 'Edit'}
+              </Button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Package Control Number</label>
-              <div>
-                <input
-                  type="text"
-                  value={formData.packageControlNumber}
-                  disabled
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 text-slate-700 font-mono"
-                />
-                <p className="text-xs text-slate-500 mt-1">Auto-generated format: TP-&lt;seq&gt;-&lt;date&gt;</p>
+
+            {isPrimarySectionEditing ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Package Name *</label>
+                  <input
+                    type="text"
+                    value={formData.packageName}
+                    onChange={(e) => setFormData({ ...formData, packageName: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Package Name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Package Control Number</label>
+                  <div>
+                    <input
+                      type="text"
+                      value={formData.packageControlNumber}
+                      disabled
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-100 text-slate-700 font-mono"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Auto-generated format: TP-&lt;seq&gt;-&lt;date&gt;</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Tender Submission Due Date</label>
+                  <input
+                    type="date"
+                    value={formData.tenderSubmissionDueDate}
+                    onChange={(e) => setFormData({ ...formData, tenderSubmissionDueDate: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">RFQ Due Date</label>
+                  <input
+                    type="date"
+                    value={formData.rfqDueDate}
+                    onChange={(e) => setFormData({ ...formData, rfqDueDate: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Package Name *</label>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.packageName || 'Not provided'}
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Package Control Number</label>
+                  <div>
+                    <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-100 text-slate-700 font-mono">
+                      {formData.packageControlNumber}
+                    </span>
+                    <p className="text-xs text-slate-500 mt-1">Auto-generated format: TP-&lt;seq&gt;-&lt;date&gt;</p>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Tender Submission Due Date</label>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.tenderSubmissionDueDate || 'Not provided'}
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">RFQ Due Date</label>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.rfqDueDate || 'Not provided'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mb-3 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-900">For Sub Contractors</h3>
+              <Button
+                type="button"
+                onClick={() => setIsSubContractorSectionEditing((prev) => !prev)}
+                className="px-2 py-1 border border-amber-300 rounded text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+              >
+                {isSubContractorSectionEditing ? 'Done' : 'Edit'}
+              </Button>
             </div>
+
+            {isSubContractorSectionEditing ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Bid Submission Due Date</label>
+                  <input
+                    type="date"
+                    value={formData.subContractorBidSubmissionDueDate}
+                    onChange={(e) => setFormData({ ...formData, subContractorBidSubmissionDueDate: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">RFQ Due Date</label>
+                  <input
+                    type="date"
+                    value={formData.subContractorRfqDueDate}
+                    onChange={(e) => setFormData({ ...formData, subContractorRfqDueDate: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Bid Submission Due Date</label>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.subContractorBidSubmissionDueDate || 'Not provided'}
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">RFQ Due Date</label>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.subContractorRfqDueDate || 'Not provided'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Site Address */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3">Site Address *</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  value={formData.siteAddress.street}
-                  onChange={(e) => handleAddressChange('street', e.target.value)}
-                  onFocus={() => setIsAddressDropdownOpen(addressSuggestions.length > 0)}
-                  onBlur={() => {
-                    window.setTimeout(() => {
-                      setIsAddressDropdownOpen(false);
-                    }, 120);
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Address Line"
-                />
-                {isAddressDropdownOpen && (addressSuggestions.length > 0 || isAddressSearchLoading || !!addressSearchError) && (
-                  <div className="border border-slate-200 rounded-lg bg-white shadow-sm max-h-56 overflow-auto">
-                    {isAddressSearchLoading && (
-                      <p className="px-3 py-2 text-sm text-slate-500">Searching addresses...</p>
-                    )}
-                    {!isAddressSearchLoading &&
-                      addressSuggestions.map((suggestion) => (
-                        <button
-                          key={`${suggestion.lat}-${suggestion.lon}-${suggestion.display_name}`}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            handleAddressSuggestionSelect(suggestion);
-                          }}
-                          className="block w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 transition-colors"
-                          title={suggestion.display_name}
-                        >
-                          {suggestion.display_name}
-                        </button>
-                      ))}
-                    {!isAddressSearchLoading && !addressSearchError && addressSuggestions.length === 0 && (
-                      <p className="px-3 py-2 text-sm text-slate-500">No address matches found.</p>
-                    )}
-                    {!isAddressSearchLoading && addressSearchError && (
-                      <p className="px-3 py-2 text-sm text-red-600">{addressSearchError}</p>
-                    )}
-                  </div>
-                )}
-                <div className="grid grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    value={formData.siteAddress.city}
-                    onChange={(e) => handleAddressChange('city', e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="City"
-                  />
-                  <input
-                    type="text"
-                    value={formData.siteAddress.state}
-                    onChange={(e) => handleAddressChange('state', e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="State"
-                  />
-                  <input
-                    type="text"
-                    value={formData.siteAddress.zipCode}
-                    onChange={(e) => handleAddressChange('zipCode', e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Zip Code"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    value={formData.siteAddress.latitude}
-                    onChange={(e) => handleAddressChange('latitude', e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Latitude"
-                    step="0.000001"
-                  />
-                  <input
-                    type="number"
-                    value={formData.siteAddress.longitude}
-                    onChange={(e) => handleAddressChange('longitude', e.target.value)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Longitude"
-                    step="0.000001"
-                  />
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 min-h-80">
-                <div className="px-3 py-2 border-b border-slate-200 bg-white">
-                  <p className="text-sm font-medium text-slate-700">Location Preview</p>
-                  <p className="text-xs text-slate-500">
-                    Lat: {formData.siteAddress.latitude || 0} | Long: {formData.siteAddress.longitude || 0}
-                  </p>
-                </div>
-                {mapEmbedUrl ? (
-                  <iframe
-                    title="Site Address Map"
-                    src={mapEmbedUrl}
-                    className="w-full h-70"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                ) : (
-                  <div className="h-70 flex items-center justify-center px-4 text-center text-sm text-slate-500">
-                    Enter valid latitude and longitude to preview the location on OpenStreetMap.
-                  </div>
-                )}
-              </div>
+          <div className="mb-3 rounded-lg border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-900">Site Address *</h3>
+              <Button
+                type="button"
+                onClick={() => setIsSiteAddressSectionEditing((prev) => !prev)}
+                className="px-2 py-1 border border-emerald-300 rounded text-[11px] font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                {isSiteAddressSectionEditing ? 'Done' : 'Edit'}
+              </Button>
             </div>
+
+            {isSiteAddressSectionEditing ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={formData.siteAddress.street}
+                    onChange={(e) => handleStreetInputChange(e.target.value)}
+                    onFocus={() => setIsAddressDropdownOpen(addressSuggestions.length > 0)}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setIsAddressDropdownOpen(false);
+                      }, 120);
+                    }}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Address Line"
+                  />
+                  {isAddressDropdownOpen && (addressSuggestions.length > 0 || isAddressSearchLoading || !!addressSearchError) && (
+                    <div className="border border-slate-200 rounded-md bg-white shadow-sm max-h-48 overflow-auto">
+                      {isAddressSearchLoading && (
+                        <p className="px-2.5 py-1.5 text-xs text-slate-500">Searching addresses...</p>
+                      )}
+                      {!isAddressSearchLoading &&
+                        addressSuggestions.map((suggestion) => (
+                          <button
+                            key={`${suggestion.lat}-${suggestion.lon}-${suggestion.display_name}`}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleAddressSuggestionSelect(suggestion);
+                            }}
+                            className="block w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-emerald-50 transition-colors"
+                            title={suggestion.display_name}
+                          >
+                            {suggestion.display_name}
+                          </button>
+                        ))}
+                      {!isAddressSearchLoading && !addressSearchError && addressSuggestions.length === 0 && (
+                        <p className="px-2.5 py-1.5 text-xs text-slate-500">No address matches found.</p>
+                      )}
+                      {!isAddressSearchLoading && addressSearchError && (
+                        <p className="px-2.5 py-1.5 text-xs text-red-600">{addressSearchError}</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={formData.siteAddress.city}
+                      onChange={(e) => handleAddressChange('city', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="City"
+                    />
+                    <input
+                      type="text"
+                      value={formData.siteAddress.state}
+                      onChange={(e) => handleAddressChange('state', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="State"
+                    />
+                    <input
+                      type="text"
+                      value={formData.siteAddress.zipCode}
+                      onChange={(e) => handleAddressChange('zipCode', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Zip Code"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      value={formData.siteAddress.latitude}
+                      onChange={(e) => handleAddressChange('latitude', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Latitude"
+                      step="0.000001"
+                    />
+                    <input
+                      type="number"
+                      value={formData.siteAddress.longitude}
+                      onChange={(e) => handleAddressChange('longitude', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Longitude"
+                      step="0.000001"
+                    />
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 rounded-md overflow-hidden bg-slate-50 min-h-64">
+                  <div className="px-2.5 py-1.5 border-b border-slate-200 bg-white">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Location Preview</p>
+                    <p className="text-xs text-slate-500">
+                      Lat: {formData.siteAddress.latitude || 0} | Long: {formData.siteAddress.longitude || 0}
+                    </p>
+                  </div>
+                  {mapEmbedUrl ? (
+                    <iframe
+                      title="Site Address Map"
+                      src={mapEmbedUrl}
+                      className="w-full h-56"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  ) : (
+                    <div className="h-56 flex items-center justify-center px-3 text-center text-xs text-slate-500">
+                      Enter valid latitude and longitude to preview the location on OpenStreetMap.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+                <div className="space-y-2">
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.siteAddress.street || 'Not provided'}
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.siteAddress.city || 'Not provided'}
+                    </span>
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.siteAddress.state || 'Not provided'}
+                    </span>
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.siteAddress.zipCode || 'Not provided'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.siteAddress.latitude || 0}
+                    </span>
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.siteAddress.longitude || 0}
+                    </span>
+                  </div>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.siteAddress.country || 'Not provided'}
+                  </span>
+                </div>
+
+                <div className="border border-slate-200 rounded-md overflow-hidden bg-slate-50 min-h-64">
+                  <div className="px-2.5 py-1.5 border-b border-slate-200 bg-white">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Location Preview</p>
+                    <p className="text-xs text-slate-500">
+                      Lat: {formData.siteAddress.latitude || 0} | Long: {formData.siteAddress.longitude || 0}
+                    </p>
+                  </div>
+                  {mapEmbedUrl ? (
+                    <iframe
+                      title="Site Address Map"
+                      src={mapEmbedUrl}
+                      className="w-full h-56"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  ) : (
+                    <div className="h-56 flex items-center justify-center px-3 text-center text-xs text-slate-500">
+                      Enter valid latitude and longitude to preview the location on OpenStreetMap.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Customer Information */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-3">Customer Information *</h3>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <input
-                type="text"
-                value={formData.customerName}
-                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Customer Name *"
-              />
-              <input
-                type="text"
-                value={formData.customerContactDetails.title}
-                onChange={(e) => handleContactChange('title', e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Title (Optional)"
-              />
+          <div className="mb-2 rounded-lg border border-cyan-200 border-l-4 border-l-cyan-500 bg-cyan-50/50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-cyan-900">Customer Information *</h3>
+              <Button
+                type="button"
+                onClick={() => setIsCustomerSectionEditing((prev) => !prev)}
+                className="px-2 py-1 border border-cyan-300 rounded text-[11px] font-medium text-cyan-800 hover:bg-cyan-100"
+              >
+                {isCustomerSectionEditing ? 'Done' : 'Edit'}
+              </Button>
             </div>
 
-            <h4 className="text-sm font-medium text-slate-700 mb-3">Contact Details</h4>
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={formData.customerContactDetails.name}
-                onChange={(e) => handleContactChange('name', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Contact Name *"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="email"
-                  value={formData.customerContactDetails.email}
-                  onChange={(e) => handleContactChange('email', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Email *"
-                />
-                <input
-                  type="tel"
-                  value={formData.customerContactDetails.phone}
-                  onChange={(e) => handleContactChange('phone', e.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Phone"
-                />
-              </div>
-              <input
-                type="tel"
-                value={formData.customerContactDetails.mobile}
-                onChange={(e) => handleContactChange('mobile', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Mobile (Optional)"
-              />
-            </div>
+            {isCustomerSectionEditing ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  <input
+                    type="text"
+                    value={formData.customerName}
+                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                    className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Customer Name *"
+                  />
+                  <input
+                    type="text"
+                    value={formData.customerContactDetails.title}
+                    onChange={(e) => handleContactChange('title', e.target.value)}
+                    className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Title (Optional)"
+                  />
+                </div>
+
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-2">Contact Details</h4>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={formData.customerContactDetails.name}
+                    onChange={(e) => handleContactChange('name', e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Contact Name *"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="email"
+                      value={formData.customerContactDetails.email}
+                      onChange={(e) => handleContactChange('email', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      placeholder="Email *"
+                    />
+                    <input
+                      type="tel"
+                      value={formData.customerContactDetails.phone}
+                      onChange={(e) => handleContactChange('phone', e.target.value)}
+                      className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      placeholder="Phone"
+                    />
+                  </div>
+                  <input
+                    type="tel"
+                    value={formData.customerContactDetails.mobile}
+                    onChange={(e) => handleContactChange('mobile', e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Mobile (Optional)"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.customerName || 'Not provided'}
+                  </span>
+                  <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.customerContactDetails.title || 'Not provided'}
+                  </span>
+                </div>
+
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-2">Contact Details</h4>
+                <div className="space-y-2">
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.customerContactDetails.name || 'Not provided'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.customerContactDetails.email || 'Not provided'}
+                    </span>
+                    <span className="block px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                      {formData.customerContactDetails.phone || 'Not provided'}
+                    </span>
+                  </div>
+                  <span className="block w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-slate-50 text-slate-800">
+                    {formData.customerContactDetails.mobile || 'Not provided'}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -601,7 +898,10 @@ export default function TenderPackageFormView({
 
       {currentStep === 3 && (
         <div className="flex-1 border-t border-slate-200 overflow-hidden bg-slate-50 w-full min-w-0">
-          <SelectionView />
+          <SelectionView
+            tenderPackageId={formPackageId}
+            onShortlistingCompletionChange={setIsShortlistingComplete}
+          />
         </div>
       )}
 
@@ -632,15 +932,22 @@ export default function TenderPackageFormView({
               ? `Previous: ${STEP_LABELS[(currentStep - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7]}`
               : 'Previous'}
           </Button>
-          <Button
-            onClick={handleNextStep}
-            disabled={currentStep === TOTAL_STEPS}
-            className="px-6 py-2 border border-blue-300 text-blue-700 rounded-lg text-xs xl:text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {currentStep < TOTAL_STEPS
-              ? `Next: ${STEP_LABELS[(currentStep + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7]}`
-              : 'Next'}
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              onClick={handleNextStep}
+              disabled={currentStep === TOTAL_STEPS || (currentStep === 3 && !isShortlistingComplete)}
+              className="px-6 py-2 border border-blue-300 text-blue-700 rounded-lg text-xs xl:text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {currentStep < TOTAL_STEPS
+                ? `Next: ${STEP_LABELS[(currentStep + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7]}`
+                : 'Next'}
+            </Button>
+            {currentStep === 3 && !isShortlistingComplete && (
+              <p className="text-xs text-amber-600">
+                Complete shortlisting on all workitems to proceed.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

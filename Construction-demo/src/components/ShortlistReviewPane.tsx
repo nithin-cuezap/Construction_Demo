@@ -1,4 +1,4 @@
-import { ChevronRight, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import type { Assignment, WorkItem } from '../types';
 import Button from './Button';
 import ReviewDropZone from './ReviewDropZone';
@@ -12,15 +12,7 @@ interface ShortlistReviewPaneProps {
 
 export default function ShortlistReviewPane({ activeItem, activeAssignments, removeSub, setWorkItemStatus }: ShortlistReviewPaneProps) {
   return (
-    <main className="w-full lg:w-1/4 min-w-0 flex flex-col bg-white border-l border-slate-200 text-xs xl:text-sm">
-      <div className="p-4 border-b border-slate-200 bg-white">
-        <div className="flex items-center gap-2 text-xs xl:text-sm font-medium text-slate-500 mb-2">
-          <span>{activeItem.section}</span>
-          <ChevronRight size={14} />
-          <span className="text-slate-900">{activeItem.division}</span>
-        </div>
-        <p className="text-slate-500 text-xs xl:text-sm">Drag vendors from the database into the review list.</p>
-      </div>
+    <main className="flex w-full min-w-0 flex-col border-l border-slate-200 bg-white text-xs xl:text-sm lg:basis-0 lg:flex-1">
       <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-3 border-slate-200">

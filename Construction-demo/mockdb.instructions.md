@@ -1,54 +1,69 @@
 ---
-applyTo: src/mockDb.ts,src/types.ts,src/App.tsx,src/views/**/*.tsx,src/components/**/*.tsx
+applyTo: src/mockDb.ts,src/types.ts,src/App.tsx,src/views/**/*.tsx,src/components/**/*.tsx,src/**/*.ops.ts
 ---
 
-# mockDB Persistence Rules
+# Data & State Management Rules
 
-Use these rules whenever a change touches app state, workflow state, or data persistence behavior.
+## Golden Rules
 
-## Core Contract
+1. **`.ops.ts` files are the ONLY gateway to mockDb** — No `.tsx` file can import or access `mockDb.ts`
+2. **Data persistence goes through `.ops.ts` files** — Any read/write to mockDb must be in an `.ops.ts` file
+3. **Data logic lives in `.ops.ts` files** — Transformations, calculations, business logic, and data helpers belong in `.ops.ts`
+4. **UI state lives in `.tsx` files** — Local React state, form inputs, animations, and UI toggles belong in components
+5. **`.ops.ts` files can import other `.ops.ts` files** — Build utilities and share data operations across `.ops` files
 
-- Treat src/mockDb.ts as the single persistence layer for in-memory app data.
-- Read state only through mockDb.get\* methods.
-- Persist state only through mockDb.set\* methods.
-- Never access or mutate the internal db object directly.
+## mockDB is a Data-Only Abstraction
 
-## Update Pattern
+**mockDb is an abstraction for a database and should ONLY store data objects.** Never store UI state, view state, or UI-related objects in mockDb.
 
-- Always perform immutable updates.
-- Create new arrays/objects with map/filter/spread before calling setters.
-- Keep UI state and mockDb state synchronized in the same flow.
+- **Store in mockDb**: Business entities (WorkItems, Subcontractors, TenderPackages, Selections, Decisions, etc.)
+- **Never store in mockDb**: UI toggles, form states, panel visibility, selected tabs, animations, hover states, etc.
+- **UI state belongs in React component state** via `useState()`
+- **mockDb is for persistent, shareable data** that represents the actual domain model
 
-## Required Flow In Components
+This keeps mockDb clean as a true data layer and makes it easy to replace with a real backend API later.
 
-1. Initialize React state from mockDb.get\*.
-2. Update local React state for UI responsiveness.
-3. Immediately persist the same next state via mockDb.set\*.
+## Where Code Goes
 
-## Workflow Rules
+### `.ops.ts` Files (Data Layer)
 
-- Workflow stage must come from mockDb.getWorkflowStage and be persisted with setWorkflowStage.
-- If changing stage behavior, keep hash routing and workflow stage persistence aligned.
-- Preserve the ordered workflow stage progression unless explicitly asked to change it.
+- Read data from mockDb via `mockDb.get*()` methods
+- Write data to mockDb via `mockDb.set*()` methods
+- Data transformations and calculations (e.g., `setWorkItemStatus()`, `removeAwardingSub()`)
+- Data helper functions (e.g., `getDecisionAssignment()`)
+- Data validation and filtering
+- Importing other `.ops.ts` files to reuse data logic
 
-## Domain Constraints
+### `.tsx` Files (UI Layer)
 
-- Preserve existing business constraints enforced by UI logic.
-- Do not weaken constraints such as max carried/backups in awarding unless explicitly requested.
-- Keep tender package control number generation format compatible with current behavior.
+- Local React state via `useState()` (form inputs, UI toggles, animations, panels, etc.)
+- UI logic and event handlers
+- Rendering and component composition
+- Calling `.ops.ts` functions to load or persist data
+- Do NOT import or access `mockDb.ts` directly
 
-## Extending mockDb
+## Required Pattern
 
-When adding a new domain state:
+When data needs to be persisted:
 
-1. Add a strongly typed interface.
-2. Add field in MockDbState.
-3. Add initial value in db initialization.
-4. Add get*/set* pair returning/storing cloned state.
-5. Export the new state type if consumed elsewhere.
+1. **In `.tsx` file**: Call `.ops.ts` function to persist
 
-## Safety Checks Before Finishing
+   ```tsx
+   const handleSave = () => {
+     persistSelectionData(updatedData); // calls .ops.ts
+   };
+   ```
 
-- Confirm no direct mutation of objects returned from getters.
-- Confirm setters receive complete, valid next state shapes.
-- Confirm UI still re-renders from React state and persists to mockDb.
+2. **In `.ops.ts` file**: Perform transformation and call mockDb
+   ```ts
+   export function persistSelectionData(data: SelectionDataState) {
+     mockDb.setSelectionData(data);
+   }
+   ```
+
+## Safety Checklist
+
+- Confirm no `.tsx` file imports `mockDb.ts`
+- Confirm no `.tsx` file imports `mockDb` or accesses it directly
+- Confirm all mockDb operations are in `.ops.ts` files
+- Confirm `.ops.ts` files use mockDb get/set methods, not direct object mutation

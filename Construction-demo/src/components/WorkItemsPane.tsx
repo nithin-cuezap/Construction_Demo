@@ -1,14 +1,21 @@
 import { HardHat, Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { Assignment, WorkItem as WorkItemType } from '../types';
 import Button from './Button';
-import DataEntryTable, { type CommitEditResult, type DataEntryColumn } from './DataEntryTable';
+import type { CommitEditResult, DataEntryColumn } from './DataEntryTable';
+import DataEntryTable from './DataEntryTable';
 
 interface DraftWorkItemRow {
   id: string;
-  section: string;
+  sectionCode: string;
+  sectionName: string;
   description: string;
 }
+
+type UnifiedRow = WorkItemType | DraftWorkItemRow;
+
+const isWorkItem = (row: UnifiedRow): row is WorkItemType => 'status' in row;
+const isDraftRow = (row: UnifiedRow): row is DraftWorkItemRow => !isWorkItem(row);
 
 interface WorkItemsPaneProps {
   workItems: WorkItemType[];
@@ -17,17 +24,9 @@ interface WorkItemsPaneProps {
   getStatusColor: (status: string) => string;
   setWorkItemStatuses: (updates: Array<{ id: string; status: string }>) => void;
   assignments?: Record<string, Assignment>;
-  onAddWorkItem: (section: string, description: string) => string | null;
-  onUpdateWorkItem: (itemId: string, section: string, description: string) => void;
+  onAddWorkItem: (sectionCode: string, sectionName: string, description: string) => void;
+  onUpdateWorkItem: (itemId: string, sectionCode: string, sectionName: string, description: string) => void;
   onDeleteWorkItem: (itemId: string) => void;
-}
-
-interface WorkItemsTableRow {
-  id: string;
-  kind: 'saved' | 'draft';
-  item?: WorkItemType;
-  draft?: DraftWorkItemRow;
-  vendorCount: number;
 }
 
 export default function WorkItemsPane({
@@ -44,7 +43,9 @@ export default function WorkItemsPane({
   const [draftRows, setDraftRows] = useState<DraftWorkItemRow[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState('');
+  const [editingSectionName, setEditingSectionName] = useState('');
   const [editingDescription, setEditingDescription] = useState('');
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
 
   const finalizeAll = () => {
     const updates = workItems
@@ -57,19 +58,20 @@ export default function WorkItemsPane({
   };
 
   const startAddRow = (): string => {
-    const id = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const newId = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setDraftRows((prev) => [
       ...prev,
       {
-        id,
-        section: '',
+        id: newId,
+        sectionCode: '',
+        sectionName: '',
         description: '',
       },
     ]);
-    return id;
+    return newId;
   };
 
-  const updateDraftRow = (draftId: string, field: 'section' | 'description', value: string) => {
+  const updateDraftRow = (draftId: string, field: 'sectionCode' | 'sectionName' | 'description', value: string) => {
     setDraftRows((prev) =>
       prev.map((row) =>
         row.id === draftId
@@ -83,246 +85,259 @@ export default function WorkItemsPane({
     setDraftRows((prev) => prev.filter((row) => row.id !== draftId));
   };
 
-  const saveDraftRow = (draftId: string): string | null => {
-    const row = draftRows.find((draft) => draft.id === draftId);
-    if (!row) return null;
-
-    const section = row.section.trim();
-    const description = row.description.trim();
-    if (!section || !description) return null;
-
-    const createdItemId = onAddWorkItem(section, description);
-    if (!createdItemId) return null;
-    setDraftRows((prev) => prev.filter((draft) => draft.id !== draftId));
-    return createdItemId;
-  };
-
-  const startEditRow = (item: WorkItemType) => {
-    setEditingItemId(item.id);
-    setEditingSection(item.division);
-    setEditingDescription(item.section);
+  const startEditRow = (row: UnifiedRow) => {
+    console.log('[WorkItemsPane] startEditRow called for:', row.id);
+    setEditingItemId(row.id);
+    setEditingSection(row.sectionCode);
+    setEditingSectionName(row.sectionName);
+    setEditingDescription(row.description);
   };
 
   const cancelEditRow = () => {
+    console.log('[WorkItemsPane] cancelEditRow called');
     setEditingItemId(null);
     setEditingSection('');
+    setEditingSectionName('');
     setEditingDescription('');
   };
 
-  const saveEditRow = (): boolean => {
-    if (!editingItemId) return false;
-    const section = editingSection.trim();
+  const saveEditRow = (row: UnifiedRow): boolean => {
+    console.log('[WorkItemsPane] saveEditRow called for:', row.id);
+    const sectionCode = editingSection.trim();
+    const sectionName = editingSectionName.trim();
     const description = editingDescription.trim();
-    if (!section || !description) return false;
-    onUpdateWorkItem(editingItemId, section, description);
+    if (!sectionCode || !sectionName || !description) {
+      console.log('[WorkItemsPane] saveEditRow - validation failed');
+      return false;
+    }
+
+    if (isWorkItem(row)) {
+      onUpdateWorkItem(row.id, sectionCode, sectionName, description);
+    } else {
+      const sectionCodeValid = sectionCode.length > 0;
+      const sectionNameValid = sectionName.length > 0;
+      const descriptionValid = description.length > 0;
+      if (sectionCodeValid && sectionNameValid && descriptionValid) {
+        onAddWorkItem(sectionCode, sectionName, description);
+      } else {
+        return false;
+      }
+      setDraftRows((prev) => prev.filter((draft) => draft.id !== row.id));
+    }
+
     cancelEditRow();
     return true;
   };
 
   const hasEligible = workItems.some((wi) => wi.status !== 'Draft' && wi.status !== 'Shortlisting Completed');
-  const canSaveDraftRow = (draftRow: DraftWorkItemRow) =>
-    draftRow.section.trim().length > 0 && draftRow.description.trim().length > 0;
 
-  const getSavedRowClassName = (isActive: boolean) => {
+  const getRowClassName = (row: UnifiedRow, isActive: boolean) => {
     if (isActive) {
       return 'bg-blue-50 ring-1 ring-inset ring-blue-300';
+    }
+    if (isDraftRow(row)) {
+      return 'bg-white';
     }
     return 'bg-white hover:bg-slate-50';
   };
 
-  const tableRows = useMemo<WorkItemsTableRow[]>(() => {
-    const savedRows = workItems.map((item) => {
-      const assignment = assignments[item.id] || { carried: null, backups: [], review: [] };
-      const carriedCount = Array.isArray(assignment.carried)
-        ? assignment.carried.length
-        : assignment.carried
-          ? 1
-          : 0;
-      const vendorCount = carriedCount + assignment.backups.length + assignment.review.length;
+  const allRows: UnifiedRow[] = [...workItems, ...draftRows];
 
-      return {
-        id: item.id,
-        kind: 'saved' as const,
-        item,
-        vendorCount,
-      };
-    });
+  const columns: DataEntryColumn<UnifiedRow>[] = [
+    {
+      id: 'sectionCode',
+      header: 'Section Code',
+      colSpan: 1,
+      renderCell: (row) => (
+        <span className="font-medium text-slate-700 truncate block">{row.sectionCode}</span>
+      ),
+      edit: {
+        getValue: (row) => row.sectionCode,
+        setValue: (row, value) => {
+          if (isWorkItem(row)) {
+            setEditingSection(value);
+          } else {
+            updateDraftRow(row.id, 'sectionCode', value);
+          }
+        },
+        placeholder: 'Section Code',
+      },
+    },
+    {
+      id: 'sectionName',
+      header: 'Section Name',
+      colSpan: 2,
+      renderCell: (row) => (
+        <span className="text-slate-700 truncate block">{row.sectionName}</span>
+      ),
+      edit: {
+        getValue: (row) => row.sectionName,
+        setValue: (row, value) => {
+          if (isWorkItem(row)) {
+            setEditingSectionName(value);
+          } else {
+            updateDraftRow(row.id, 'sectionName', value);
+          }
+        },
+        placeholder: 'Section Name',
+      },
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      colSpan: 4,
+      renderCell: (row) => (
+        <span className="text-slate-900 truncate block">{row.description}</span>
+      ),
+      edit: {
+        getValue: (row) => row.description,
+        setValue: (row, value) => {
+          if (isWorkItem(row)) {
+            setEditingDescription(value);
+          } else {
+            updateDraftRow(row.id, 'description', value);
+          }
+        },
+        placeholder: 'Description',
+      },
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      colSpan: 2,
+      renderCell: (row) => {
+        const status = isWorkItem(row) ? row.status : 'Draft';
+        return (
+          <span className={`inline-flex px-2 py-0.5 rounded-md border text-[11px] xl:text-xs font-medium ${getStatusColor(status)}`}>
+            {status}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'vendors',
+      header: 'Vendors',
+      colSpan: 2,
+      cellClassName: 'text-right',
+      renderCell: (row) => {
+        if (!isWorkItem(row)) return <span className="font-semibold text-blue-700">0</span>;
+        const a = assignments[row.id] || { carried: null, backups: [], review: [] };
+        const carriedCount = Array.isArray(a.carried) ? a.carried.length : (a.carried ? 1 : 0);
+        const vendorCount = carriedCount + a.backups.length + a.review.length;
+        return <span className="font-semibold text-blue-700">{vendorCount}</span>;
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      colSpan: 1,
+      cellClassName: 'text-center',
+      renderCell: (row) => {
+        const isEditing = editingItemId === row.id;
+        if (isEditing) {
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  saveEditRow(row);
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  cancelEditRow();
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          );
+        }
 
-    const unsavedRows = draftRows.map((draft) => ({
-      id: draft.id,
-      kind: 'draft' as const,
-      draft,
-      vendorCount: 0,
-    }));
+        if (isDraftRow(row)) {
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  cancelAddRow(row.id);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          );
+        }
 
-    return [...savedRows, ...unsavedRows];
-  }, [assignments, draftRows, workItems]);
+        if (!isWorkItem(row)) return null;
+        const workItemRow: WorkItemType = row;
 
-  const saveTableRow = (row: WorkItemsTableRow): boolean => {
-    if (row.kind === 'saved') {
-      return saveEditRow();
+        return (
+          <button
+            type="button"
+            className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            aria-label={`Delete ${workItemRow.sectionCode}`}
+            disabled={workItems.length <= 1}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeleteWorkItem(workItemRow.id);
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        );
+      },
+    },
+  ];
+
+  const handleActiveRowChange = (row: UnifiedRow) => {
+    console.log('[WorkItemsPane] Active row changed to:', row.id);
+    if (isWorkItem(row)) {
+      setActiveItem(row);
     }
-
-    return !!saveDraftRow(row.id);
+    setActiveRowId(row.id);
   };
 
-  const handleCommitRowEdit = (
-    row: WorkItemsTableRow,
-    context: { isLastRow: boolean },
-  ): CommitEditResult => {
-    const didSave = saveTableRow(row);
+  const handleEnterRowEdit = (row: UnifiedRow) => {
+    console.log('[WorkItemsPane] Enter row edit for:', row.id);
+    startEditRow(row);
+  };
+
+  const handleCancelRowEdit = (row: UnifiedRow) => {
+    console.log('[WorkItemsPane] handleCancelRowEdit called for:', row.id);
+    // If it's a draft row, remove it from the list
+    if (isDraftRow(row)) {
+      cancelAddRow(row.id);
+    }
+    cancelEditRow();
+  };
+
+  const handleCommitRowEdit = (row: UnifiedRow, context: { isLastRow: boolean }): CommitEditResult => {
+    console.log('[WorkItemsPane] Commit row edit for:', row.id, 'isLastRow:', context.isLastRow);
+    const didSave = saveEditRow(row);
     if (!didSave) return { saved: false };
 
     if (context.isLastRow) {
-      const nextDraftId = startAddRow();
-      return { saved: true, nextRowId: nextDraftId, nextRowEdit: true };
+      // Add a new draft row and enter edit mode for it
+      const newRowId = startAddRow();
+      setEditingItemId(newRowId);
+      setEditingSection('');
+      setEditingSectionName('');
+      setEditingDescription('');
+      return { saved: true, nextRowId: newRowId, nextRowEdit: true };
     }
 
     return { saved: true };
   };
-
-  const columns: Array<DataEntryColumn<WorkItemsTableRow>> = [
-      {
-        id: 'section',
-        header: 'Section',
-        colSpan: 2,
-        cellClassName: 'font-medium text-slate-700 truncate block',
-        renderCell: (row) => {
-          if (row.kind === 'saved' && row.item) {
-            return row.item.division;
-          }
-          return row.draft?.section ?? '';
-        },
-        edit: {
-          isEditable: (row) => row.kind === 'draft' || editingItemId === row.id,
-          getValue: (row) => {
-            if (row.kind === 'saved') {
-              return editingItemId === row.id ? editingSection : row.item?.division ?? '';
-            }
-            return row.draft?.section ?? '';
-          },
-          setValue: (row, value) => {
-            if (row.kind === 'saved') {
-              setEditingSection(value);
-              return;
-            }
-            updateDraftRow(row.id, 'section', value);
-          },
-          placeholder: 'Section',
-        },
-      },
-      {
-        id: 'description',
-        header: 'Description',
-        colSpan: 4,
-        renderCell: (row) => {
-          if (row.kind === 'saved' && row.item) {
-            return (
-              <span className="text-slate-900 truncate block" title={row.item.section}>
-                {row.item.section}
-              </span>
-            );
-          }
-          return row.draft?.description ?? '';
-        },
-        edit: {
-          isEditable: (row) => row.kind === 'draft' || editingItemId === row.id,
-          getValue: (row) => {
-            if (row.kind === 'saved') {
-              return editingItemId === row.id ? editingDescription : row.item?.section ?? '';
-            }
-            return row.draft?.description ?? '';
-          },
-          setValue: (row, value) => {
-            if (row.kind === 'saved') {
-              setEditingDescription(value);
-              return;
-            }
-            updateDraftRow(row.id, 'description', value);
-          },
-          placeholder: 'Description',
-        },
-      },
-      {
-        id: 'status',
-        header: 'Status',
-        colSpan: 2,
-        renderCell: (row) => {
-          const status = row.kind === 'saved' && row.item ? row.item.status : 'Draft';
-          return (
-            <span className={`inline-flex px-2 py-0.5 rounded-md border text-[11px] xl:text-xs font-medium ${getStatusColor(status)}`}>
-              {status}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'vendors',
-        header: 'Vendors',
-        colSpan: 2,
-        headerClassName: 'text-right',
-        cellClassName: 'text-right font-semibold text-blue-700',
-        renderCell: (row) => row.vendorCount,
-      },
-      {
-        id: 'actions',
-        header: 'Actions',
-        colSpan: 2,
-        headerClassName: 'text-center',
-        cellClassName: 'flex items-center justify-center gap-1',
-        renderCell: (row) => {
-          const isEditing = row.kind === 'draft' || editingItemId === row.id;
-          if (isEditing) {
-            return (
-              <>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    saveTableRow(row);
-                  }}
-                  disabled={row.kind === 'draft' ? !canSaveDraftRow(row.draft as DraftWorkItemRow) : false}
-                >
-                  Save
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (row.kind === 'draft') {
-                      cancelAddRow(row.id);
-                    } else {
-                      cancelEditRow();
-                    }
-                  }}
-                >
-                  Cancel
-                </Button>
-              </>
-            );
-          }
-
-          if (!row.item) return null;
-
-          return (
-            <button
-              type="button"
-              className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:text-slate-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-              aria-label={`Delete ${row.item.section}`}
-              disabled={workItems.length <= 1}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDeleteWorkItem(row.item!.id);
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-          );
-        },
-      },
-    ];
 
   return (
     <aside className="w-full lg:w-1/2 bg-slate-50 border-r border-slate-200 flex flex-col min-w-0 text-xs xl:text-sm">
@@ -341,32 +356,19 @@ export default function WorkItemsPane({
       </div>
 
       <DataEntryTable
-        rows={tableRows}
+        rows={allRows}
         rowId={(row) => row.id}
         columns={columns}
-        activeRowId={activeItem.id}
-        onActiveRowChange={(row) => {
-          if (row.kind === 'saved' && row.item) {
-            setActiveItem(row.item);
-          }
-        }}
-        isRowEditing={(row) => row.kind === 'draft' || editingItemId === row.id}
-        onEnterRowEdit={(row) => {
-          if (row.kind === 'saved' && row.item) {
-            startEditRow(row.item);
-          }
-        }}
+        activeRowId={activeRowId ?? activeItem.id}
+        onActiveRowChange={handleActiveRowChange}
+        isRowEditing={(row) => editingItemId === row.id}
+        onEnterRowEdit={handleEnterRowEdit}
+        onCancelRowEdit={handleCancelRowEdit}
         onCommitRowEdit={handleCommitRowEdit}
-        onCancelRowEdit={(row) => {
-          if (row.kind === 'draft') {
-            cancelAddRow(row.id);
-            return;
-          }
-          cancelEditRow();
-        }}
-        getRowClassName={(row, isActive) =>
-          row.kind === 'saved' ? getSavedRowClassName(isActive) : 'bg-white'
-        }
+        isNewRow={isDraftRow}
+        getRowClassName={getRowClassName}
+        tableBodyClassName="overflow-y-auto flex-1 bg-slate-100/40"
+        rowClassName=""
       />
 
       <div className="p-4 border-t border-slate-200 bg-white">

@@ -1,18 +1,29 @@
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { GripVertical, Star } from 'lucide-react';
 import type { Subcontractor } from '../types';
 
 export default function DraggableSubcontractorCard({ sub }: { sub: Subcontractor }) {
-  const {attributes, listeners, setNodeRef, isDragging} = useDraggable({
-    id: sub.id
+  const { attributes, listeners, setNodeRef: setDraggableNodeRef, isDragging } = useDraggable({
+    id: sub.id,
+    data: { listType: 'database', itemId: sub.id },
   });
+  const { setNodeRef: setDroppableNodeRef, isOver } = useDroppable({
+    id: sub.id,
+    data: { listType: 'database', itemId: sub.id },
+  });
+
+  const setNodeRef = (node: HTMLDivElement | null) => {
+    setDraggableNodeRef(node);
+    setDroppableNodeRef(node);
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={{ opacity: isDragging ? 0.5 : 1 }}
       {...listeners}
       {...attributes}
-      className="bg-white border border-slate-200 rounded-xl p-4 cursor-grab hover:shadow-md hover:border-blue-400 hover:-translate-y-0.5 transition-all active:cursor-grabbing group relative overflow-hidden"
+      className={`bg-white border rounded-xl p-4 cursor-grab hover:shadow-md hover:-translate-y-0.5 transition-all active:cursor-grabbing group relative overflow-hidden ${isOver ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200 hover:border-blue-400'}`}
     >
       <div className="absolute top-0 left-0 w-1 h-full bg-slate-200 group-hover:bg-blue-400 transition-colors"></div>
       <div className="flex justify-between items-start pl-2">

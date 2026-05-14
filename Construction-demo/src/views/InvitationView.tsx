@@ -52,7 +52,7 @@ export default function InvitationView({
         </div>
 
         <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="invite-note">
-          Internal note for {activeItem.section}
+          Internal note for {activeItem.sectionCode} {activeItem.sectionName}
         </label>
         <textarea
           id="invite-note"

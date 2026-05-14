@@ -5,38 +5,54 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { useMemo, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import AssignedCard from '../components/AssignedCard';
 import DraggableSubcontractorCard from '../components/DraggableSubcontractorCard';
 import ShortlistReviewPane from '../components/ShortlistReviewPane';
 import VendorDatabasePane from '../components/VendorDatabasePane';
 import WorkItemsPane from '../components/WorkItemsPane';
 import {
   addSelectionReviewSub,
+  addSelectionReviewSubAt,
   addWorkItem,
+  areAllWorkItemsShortlistingCompleted,
   getAssignmentsByItemId,
   getSelectionFilteredSubs,
   getSelectionViewData,
   persistSelectionData,
   persistWorkItems,
   removeSelectionReviewSub,
+  reorderSelectionReviewSub,
   setWorkItemStatus,
   setWorkItemStatuses,
 } from '../Selection.ops';
-import type { Assignment, AwardingDataState, SelectionDataState, WorkItem } from '../types';
+import type { Assignment, AwardingDataState, SelectionDataState, Subcontractor, WorkItem } from '../types';
 
-export default function SelectionView() {
-  const [initialSelectionViewData] = useState(() => getSelectionViewData());
+interface SelectionViewProps {
+  tenderPackageId: string;
+  onShortlistingCompletionChange?: (isComplete: boolean) => void;
+}
+
+export default function SelectionView({ tenderPackageId, onShortlistingCompletionChange }: SelectionViewProps) {
+  const [initialSelectionViewData] = useState(() => getSelectionViewData(tenderPackageId));
   const [workItems, setWorkItems] = useState<WorkItem[]>(initialSelectionViewData.workItems);
   const [selectionData, setSelectionData] = useState<SelectionDataState>(initialSelectionViewData.selectionData);
   const [awardingData] = useState<AwardingDataState>(initialSelectionViewData.awardingData);
   const [activeItemId, setActiveItemId] = useState<string>(initialSelectionViewData.workItems[0]?.id ?? '');
   const subcontractors = useMemo(() => initialSelectionViewData.subcontractors, [initialSelectionViewData]);
   const [draggedSubId, setDraggedSubId] = useState<string | null>(null);
+  const [draggedSubSource, setDraggedSubSource] = useState<'database' | 'review' | null>(null);
+  const [vendorOrder, setVendorOrder] = useState<string[]>(() => initialSelectionViewData.subcontractors.map((sub) => sub.id));
 
   const updateWorkItems = (next: WorkItem[]) => {
     setWorkItems(next);
-    persistWorkItems(next);
+    persistWorkItems(tenderPackageId, next);
   };
+
+  useEffect(() => {
+    onShortlistingCompletionChange?.(areAllWorkItemsShortlistingCompleted(workItems));
+  }, [onShortlistingCompletionChange, workItems]);
 
   const updateSelectionData = (next: SelectionDataState) => {
     setSelectionData(next);
@@ -53,15 +69,28 @@ export default function SelectionView() {
     ...activeAssignments.review.map((s) => s.id),
   ]);
   const filteredSubs = getSelectionFilteredSubs(subcontractors, activeItem, assignedIds);
+  const orderedFilteredSubs = useMemo(() => {
+    const orderIndex = new Map(vendorOrder.map((id, index) => [id, index]));
+    return [...filteredSubs].sort((left, right) => (orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+  }, [filteredSubs, vendorOrder]);
+
+  const getVendorById = (subId: string): Subcontractor | undefined =>
+    subcontractors.find((sub) => sub.id === subId);
+
+  const reorderIds = (ids: string[], activeId: string, overId: string) => {
+    const fromIndex = ids.indexOf(activeId);
+    const toIndex = ids.indexOf(overId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return ids;
+
+    const next = [...ids];
+    const [movedId] = next.splice(fromIndex, 1);
+    const targetIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    next.splice(targetIndex, 0, movedId);
+    return next;
+  };
 
   const handleSelectItem = (item: WorkItem) => {
     setActiveItemId(item.id);
-  };
-
-  const handleAddReviewSub = (sub: Assignment['review'][number]) => {
-    const next = addSelectionReviewSub(selectionData, activeItem.id, sub);
-    if (!next) return;
-    updateSelectionData(next);
   };
 
   const handleRemoveSub = (zone: 'carried' | 'backup' | 'review', subId: string) => {
@@ -70,9 +99,7 @@ export default function SelectionView() {
     const next = removeSelectionReviewSub(selectionData, itemId, subId);
     const nextReview = next.reviewByItemId[itemId] ?? [];
     updateSelectionData(next);
-    updateWorkItems(
-      setWorkItemStatus(workItems, itemId, nextReview.length === 0 ? 'Draft' : 'Shortlisting In-Progress'),
-    );
+    handleShortlistChanged(itemId, nextReview.length);
   };
 
   const handleSetWorkItemStatus = (itemId: string, status: string) => {
@@ -83,23 +110,49 @@ export default function SelectionView() {
     updateWorkItems(setWorkItemStatuses(workItems, updates));
   };
 
-  const handleAddWorkItem = (section: string, description: string): string | null => {
-    const result = addWorkItem(workItems, section, description);
+  const handleShortlistChanged = (itemId: string, nextReviewCount: number) => {
+    const currentStatus = workItems.find((item) => item.id === itemId)?.status;
+    if (!currentStatus) return;
+
+    if (currentStatus === 'Shortlisting Completed') {
+      handleSetWorkItemStatus(itemId, 'Shortlisting In-Progress');
+      return;
+    }
+
+    if (nextReviewCount === 0) {
+      handleSetWorkItemStatus(itemId, 'Draft');
+      return;
+    }
+
+    if (currentStatus === 'Draft') {
+      handleSetWorkItemStatus(itemId, 'Shortlisting In-Progress');
+    }
+  };
+
+  const handleAddWorkItem = (sectionCode: string, sectionName: string, description: string): string | null => {
+    const result = addWorkItem(
+      workItems,
+      tenderPackageId,
+      sectionCode,
+      sectionName,
+      description,
+    );
     if (!result) return null;
     updateWorkItems(result.workItems);
     setActiveItemId(result.createdItemId);
     return result.createdItemId;
   };
 
-  const handleUpdateWorkItem = (itemId: string, section: string, description: string) => {
-    const normalizedSection = section.trim();
+  const handleUpdateWorkItem = (itemId: string, sectionCode: string, sectionName: string, description: string) => {
+    const normalizedSectionCode = sectionCode.trim();
+    const normalizedSectionName = sectionName.trim();
     const normalizedDescription = description.trim();
-    if (!normalizedSection || !normalizedDescription) return;
+    if (!normalizedSectionCode || !normalizedSectionName || !normalizedDescription) return;
 
     updateWorkItems(
       workItems.map((item) =>
         item.id === itemId
-          ? { ...item, division: normalizedSection, section: normalizedDescription }
+          ? { ...item, sectionCode: normalizedSectionCode, sectionName: normalizedSectionName, description: normalizedDescription }
           : item,
       ),
     );
@@ -143,31 +196,59 @@ export default function SelectionView() {
   };
 
   const draggedSub = draggedSubId
-    ? filteredSubs.find((sub) => sub.id === draggedSubId) ?? null
+    ? [...orderedFilteredSubs, ...activeAssignments.review].find((sub) => sub.id === draggedSubId) ?? getVendorById(draggedSubId) ?? null
     : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setDraggedSubId(String(event.active.id));
+    setDraggedSubSource((event.active.data.current?.listType as 'database' | 'review' | undefined) ?? null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setDraggedSubId(null);
+    setDraggedSubSource(null);
 
     const { over, active } = event;
-    if (!over || over.id !== 'review') return;
+    if (!over) return;
 
+    const activeType = active.data.current?.listType as 'database' | 'review' | undefined;
+    const overType = over.data.current?.listType as 'database' | 'review' | 'review-zone' | undefined;
     const draggedId = String(active.id);
-    const draggedSub = filteredSubs.find((sub) => sub.id === draggedId);
+    const overId = String(over.id);
+
+    if (activeType === 'review' && overType === 'review') {
+      const next = reorderSelectionReviewSub(selectionData, activeItem.id, draggedId, overId);
+      if (!next) return;
+      updateSelectionData(next);
+      const nextReview = next.reviewByItemId[activeItem.id] ?? [];
+      handleShortlistChanged(activeItem.id, nextReview.length);
+      return;
+    }
+
+    if (activeType === 'database' && overType === 'database') {
+      setVendorOrder((current) => reorderIds(current, draggedId, overId));
+      return;
+    }
+
+    if (activeType !== 'database') return;
+
+    const draggedSub = getVendorById(draggedId);
     if (!draggedSub) return;
 
     const alreadyInReview = activeAssignments.review.some((sub) => sub.id === draggedSub.id);
     if (alreadyInReview) return;
 
-    handleAddReviewSub(draggedSub);
+    const nextReviewIndex = activeAssignments.review.findIndex((sub) => sub.id === overId);
+    const nextSelectionData =
+      overType === 'review' && nextReviewIndex !== -1
+        ? addSelectionReviewSubAt(selectionData, activeItem.id, draggedSub, nextReviewIndex)
+        : addSelectionReviewSub(selectionData, activeItem.id, draggedSub);
 
-    if (activeItem.status === 'Draft') {
-      handleSetWorkItemStatus(activeItem.id, 'Shortlisting In-Progress');
-    }
+    if (!nextSelectionData) return;
+
+    updateSelectionData(nextSelectionData);
+    const nextReview = nextSelectionData.reviewByItemId[activeItem.id] ?? [];
+    handleShortlistChanged(activeItem.id, nextReview.length);
   };
 
   return (
@@ -184,16 +265,34 @@ export default function SelectionView() {
           onUpdateWorkItem={handleUpdateWorkItem}
           onDeleteWorkItem={handleDeleteWorkItem}
         />
-        <VendorDatabasePane filteredSubs={filteredSubs} />
-        <ShortlistReviewPane
-          activeItem={activeItem}
-          activeAssignments={activeAssignments}
-          removeSub={handleRemoveSub}
-          setWorkItemStatus={handleSetWorkItemStatus}
-        />
+        <div className="flex w-full min-w-0 flex-col lg:w-1/2">
+          <div className="border-l border-slate-200 bg-white p-4">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-500 xl:text-sm">
+              <span>{activeItem.sectionCode}</span>
+              <ChevronRight size={14} />
+              <span className="text-slate-900">{activeItem.sectionName}</span>
+            </div>
+            <p className="text-xs text-slate-500 xl:text-sm">Drag vendors from the database into the review list.</p>
+          </div>
+          <div className="flex min-h-0 w-full flex-col lg:flex-1 lg:flex-row">
+            <VendorDatabasePane filteredSubs={orderedFilteredSubs} />
+            <ShortlistReviewPane
+              activeItem={activeItem}
+              activeAssignments={activeAssignments}
+              removeSub={handleRemoveSub}
+              setWorkItemStatus={handleSetWorkItemStatus}
+            />
+          </div>
+        </div>
       </div>
       <DragOverlay>
-        {draggedSub ? <DraggableSubcontractorCard sub={draggedSub} /> : null}
+        {draggedSub ? (
+          draggedSubSource === 'review' ? (
+            <AssignedCard sub={draggedSub} onRemove={() => undefined} type="review" hideRemove />
+          ) : (
+            <DraggableSubcontractorCard sub={draggedSub} />
+          )
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
