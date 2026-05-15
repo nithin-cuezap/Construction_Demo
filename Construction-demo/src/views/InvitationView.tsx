@@ -1,11 +1,11 @@
 import { ChevronLeft, ChevronRight, Mail } from 'lucide-react';
 import Button from '../components/Button';
-import type { InvitationDataState, WorkItem } from '../types';
+import type { BidDataState, WorkItem } from '../types';
 
 interface InvitationViewProps {
   workItems: WorkItem[];
   activeItem: WorkItem;
-  invitationState: InvitationDataState;
+  invitationState: BidDataState;
   onUpdateNote: (itemId: string, note: string) => void;
   onSendInvites: () => void;
   onBack: () => void;
@@ -25,8 +25,10 @@ export default function InvitationView({
     .filter((item) => item.status === 'Shortlisting Completed' || item.status === 'Invited')
     .map((item) => item.id);
 
-  const sentCount = invitationState.sentItemIds.length;
-  const note = invitationState.notesByItemId[activeItem.id] ?? '';
+  // Count invitations sent based on bid records
+  const sentCount = invitationState.bidRecords.length;
+  // Legacy note functionality removed - can be re-added if needed
+  const note = '';
 
   return (
     <main className="flex-1 flex items-center justify-center bg-slate-50 p-8">

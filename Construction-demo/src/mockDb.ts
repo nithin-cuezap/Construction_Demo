@@ -1,7 +1,7 @@
 import {
   createInitialWorkItemsForPackage,
   INITIAL_AWARDING_DATA,
-  INITIAL_INVITATION_DATA,
+  INITIAL_BID_DATA,
   INITIAL_PACKAGE_ID,
   INITIAL_SELECTION_DATA,
   INITIAL_SUBCONTRACTORS,
@@ -10,9 +10,9 @@ import {
 } from "./initial-data";
 import type {
   AwardingDataState,
-  InvitationDataState,
-  InvitationRecord,
-  InvitationStatus,
+  BidDataState,
+  BidRecord,
+  BidStatus,
   SelectionDataState,
   Subcontractor,
   TenderPackage,
@@ -31,7 +31,7 @@ interface MockDbState {
   workItemsByPackageId: Record<string, WorkItem[]>;
   subcontractors: Subcontractor[];
   selectionData: SelectionDataState;
-  invitationData: InvitationDataState;
+  bidData: BidDataState;
   awardingData: AwardingDataState;
   tenderPackages: TenderPackage[];
 }
@@ -43,7 +43,7 @@ const db: MockDbState = {
   },
   subcontractors: INITIAL_SUBCONTRACTORS,
   selectionData: INITIAL_SELECTION_DATA,
-  invitationData: INITIAL_INVITATION_DATA,
+  bidData: INITIAL_BID_DATA,
   awardingData: INITIAL_AWARDING_DATA,
   tenderPackages: INITIAL_TENDER_PACKAGES,
 };
@@ -98,17 +98,7 @@ export const mockDb = {
       ),
     };
 
-    db.invitationData = {
-      ...db.invitationData,
-      notesByItemId: Object.fromEntries(
-        Object.entries(db.invitationData.notesByItemId).filter(
-          ([itemId]) => !removedItemIds.has(itemId),
-        ),
-      ),
-      sentItemIds: db.invitationData.sentItemIds.filter(
-        (itemId) => !removedItemIds.has(itemId),
-      ),
-    };
+    // Clean up invitation records for removed work items (no workItem-specific data currently)
 
     db.awardingData = {
       ...db.awardingData,
@@ -131,11 +121,11 @@ export const mockDb = {
     db.selectionData = clone(nextSelectionData);
   },
 
-  getInvitationData(): InvitationDataState {
-    return clone(db.invitationData);
+  getBidData(): BidDataState {
+    return clone(db.bidData);
   },
-  setInvitationData(nextInvitationData: InvitationDataState) {
-    db.invitationData = clone(nextInvitationData);
+  setBidData(nextBidData: BidDataState) {
+    db.bidData = clone(nextBidData);
   },
 
   getAwardingData(): AwardingDataState {
@@ -158,65 +148,57 @@ export const mockDb = {
     return `TP-${seq}-${date}`;
   },
 
-  getInvitationRecords(tenderPackageId: string): InvitationRecord[] {
+  getBidRecords(tenderPackageId: string): BidRecord[] {
     return clone(
-      db.invitationData.invitationRecords.filter(
+      db.bidData.bidRecords.filter(
         (record) => record.tenderPackageId === tenderPackageId,
       ),
     );
   },
 
-  createInvitationRecords(
+  createBidRecords(
     tenderPackageId: string,
     subcontractorIds: string[],
-  ): InvitationRecord[] {
+  ): BidRecord[] {
     const now = new Date().toISOString();
-    const newRecords: InvitationRecord[] = subcontractorIds.map(
-      (subcontractorId) => ({
-        id: `invitation-${tenderPackageId}-${subcontractorId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        tenderPackageId,
-        subcontractorId,
-        status: "Invited" as InvitationStatus,
-        invitedAt: now,
-        lastUpdatedAt: now,
-      }),
-    );
+    const newRecords: BidRecord[] = subcontractorIds.map((subcontractorId) => ({
+      id: `bid-${tenderPackageId}-${subcontractorId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      tenderPackageId,
+      subcontractorId,
+      status: "Invited" as BidStatus,
+      invitedAt: now,
+      lastUpdatedAt: now,
+    }));
 
-    db.invitationData = {
-      ...db.invitationData,
-      invitationRecords: [
-        ...db.invitationData.invitationRecords,
-        ...newRecords,
-      ],
+    db.bidData = {
+      ...db.bidData,
+      bidRecords: [...db.bidData.bidRecords, ...newRecords],
     };
 
     return clone(newRecords);
   },
 
-  updateInvitationStatus(
-    invitationId: string,
-    status: InvitationStatus,
-  ): InvitationRecord | null {
-    const recordIndex = db.invitationData.invitationRecords.findIndex(
-      (record) => record.id === invitationId,
+  updateBidStatus(bidId: string, status: BidStatus): BidRecord | null {
+    const recordIndex = db.bidData.bidRecords.findIndex(
+      (record) => record.id === bidId,
     );
 
     if (recordIndex === -1) {
       return null;
     }
 
-    const updatedRecord: InvitationRecord = {
-      ...db.invitationData.invitationRecords[recordIndex],
+    const updatedRecord: BidRecord = {
+      ...db.bidData.bidRecords[recordIndex],
       status,
       lastUpdatedAt: new Date().toISOString(),
     };
 
-    const updatedRecords = [...db.invitationData.invitationRecords];
+    const updatedRecords = [...db.bidData.bidRecords];
     updatedRecords[recordIndex] = updatedRecord;
 
-    db.invitationData = {
-      ...db.invitationData,
-      invitationRecords: updatedRecords,
+    db.bidData = {
+      ...db.bidData,
+      bidRecords: updatedRecords,
     };
 
     return clone(updatedRecord);

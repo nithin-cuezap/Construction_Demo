@@ -1,44 +1,18 @@
-import { mockDb } from "./mockDb";
-import type { InvitationRecord, InvitationStatus } from "./types";
+import { createBidsForShortlistedVendors, getBidRecords } from "./Bid.ops";
+import type { BidRecord } from "./types";
 
-export function getInvitationRecords(
-  tenderPackageId: string,
-): InvitationRecord[] {
-  return mockDb.getInvitationRecords(tenderPackageId);
-}
+/**
+ * Invitation operations layer - handles the invitation workflow
+ * Delegates to Bid.ops for underlying bid data management
+ */
 
-export function createInvitationRecords(
-  tenderPackageId: string,
-  subcontractorIds: string[],
-): InvitationRecord[] {
-  return mockDb.createInvitationRecords(tenderPackageId, subcontractorIds);
-}
-
-export function updateInvitationStatus(
-  invitationId: string,
-  status: InvitationStatus,
-): InvitationRecord | null {
-  return mockDb.updateInvitationStatus(invitationId, status);
+export function getInvitationRecords(tenderPackageId: string): BidRecord[] {
+  return getBidRecords(tenderPackageId);
 }
 
 export function createInvitationsForShortlistedVendors(
   tenderPackageId: string,
   shortlistedVendorIds: string[],
-): { newRecords: InvitationRecord[]; alreadyInvitedCount: number } {
-  const existingRecords = getInvitationRecords(tenderPackageId);
-  const existingVendorIds = new Set(
-    existingRecords.map((record) => record.subcontractorId),
-  );
-
-  const newVendorIds = shortlistedVendorIds.filter(
-    (id) => !existingVendorIds.has(id),
-  );
-  const alreadyInvitedCount = shortlistedVendorIds.length - newVendorIds.length;
-
-  const newRecords =
-    newVendorIds.length > 0
-      ? createInvitationRecords(tenderPackageId, newVendorIds)
-      : [];
-
-  return { newRecords, alreadyInvitedCount };
+): { newRecords: BidRecord[]; alreadyInvitedCount: number } {
+  return createBidsForShortlistedVendors(tenderPackageId, shortlistedVendorIds);
 }

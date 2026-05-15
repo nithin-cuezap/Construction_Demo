@@ -17,26 +17,24 @@ export interface SelectionDataState {
   reviewByItemId: Record<string, Subcontractor[]>;
 }
 
-export type InvitationStatus =
+export type BidStatus =
   | "Invited"
   | "Bidding"
   | "Not Bidding"
   | "Not Sure"
   | "Bid Submitted";
 
-export interface InvitationRecord {
+export interface BidRecord {
   id: string;
   tenderPackageId: string;
   subcontractorId: string;
-  status: InvitationStatus;
+  status: BidStatus;
   invitedAt: string;
   lastUpdatedAt: string;
 }
 
-export interface InvitationDataState {
-  notesByItemId: Record<string, string>;
-  sentItemIds: string[];
-  invitationRecords: InvitationRecord[];
+export interface BidDataState {
+  bidRecords: BidRecord[];
 }
 
 export interface AwardingDataState {
