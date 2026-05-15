@@ -6,6 +6,10 @@
  * bids, and workflow stages. The database uses deep cloning to ensure immutability and
  * prevent unintended mutations.
  *
+ * Data is automatically persisted to IndexedDB using Dexie.js, enabling offline functionality
+ * and persistence across browser sessions. The in-memory cache provides fast synchronous access
+ * while IndexedDB handles durable storage.
+ *
  * In a production environment, this would be replaced with actual API calls to a backend service.
  *
  * @module mockDb
@@ -21,6 +25,7 @@ import {
   INITIAL_TENDER_PACKAGES,
   INITIAL_WORKFLOW_STAGE,
 } from "./initial-data";
+import { indexedDbApi } from "./indexedDb";
 import type {
   AwardingDataState,
   BidDataState,
@@ -77,7 +82,7 @@ interface MockDbState {
 
 /**
  * The in-memory database state.
- * Initialized with demo/seed data from initial-data module.
+ * Initialized with demo/seed data from initial-data module or loaded from IndexedDB.
  *
  * @constant {MockDbState} db
  * @private
@@ -93,6 +98,23 @@ const db: MockDbState = {
   awardingData: INITIAL_AWARDING_DATA,
   tenderPackages: INITIAL_TENDER_PACKAGES,
 };
+
+/**
+ * Flag indicating whether the database has been initialized from IndexedDB.
+ *
+ * @type {boolean}
+ * @private
+ */
+let isInitialized = false;
+
+/**
+ * Promise that resolves when database initialization is complete.
+ * Used to ensure initialization happens only once.
+ *
+ * @type {Promise<void> | null}
+ * @private
+ */
+let initPromise: Promise<void> | null = null;
 
 /**
  * Creates a deep clone of any value to ensure immutability.
@@ -114,13 +136,120 @@ const clone = <T>(value: T): T => {
 };
 
 /**
+ * Initializes the database by loading persisted data from IndexedDB.
+ * If no persisted data exists, uses initial seed data and saves it to IndexedDB.
+ * This function is idempotent - calling it multiple times is safe.
+ *
+ * @returns {Promise<void>} Promise that resolves when initialization is complete
+ * @private
+ */
+async function initializeDatabase(): Promise<void> {
+  // If already initialized or initialization in progress, return existing promise
+  if (isInitialized) {
+    return Promise.resolve();
+  }
+  if (initPromise) {
+    return initPromise;
+  }
+
+  // Start initialization
+  initPromise = (async () => {
+    try {
+      const hasData = await indexedDbApi.hasPersistedData();
+
+      if (hasData) {
+        // Load existing data from IndexedDB
+        const [
+          workflowStage,
+          subcontractors,
+          selectionData,
+          bidData,
+          awardingData,
+          tenderPackages,
+        ] = await Promise.all([
+          indexedDbApi.getWorkflowStage(),
+          indexedDbApi.getSubcontractors(),
+          indexedDbApi.getSelectionData(),
+          indexedDbApi.getBidData(),
+          indexedDbApi.getAwardingData(),
+          indexedDbApi.getTenderPackages(),
+        ]);
+
+        // Update in-memory state with persisted data
+        if (workflowStage) db.workflowStage = workflowStage;
+        if (subcontractors.length > 0) db.subcontractors = subcontractors;
+        if (selectionData) db.selectionData = selectionData;
+        if (bidData) db.bidData = bidData;
+        if (awardingData) db.awardingData = awardingData;
+        if (tenderPackages.length > 0) db.tenderPackages = tenderPackages;
+
+        // Load work items for all packages
+        db.workItemsByPackageId = {};
+        for (const pkg of tenderPackages) {
+          const workItems = await indexedDbApi.getWorkItems(pkg.id);
+          if (workItems.length > 0) {
+            db.workItemsByPackageId[pkg.id] = workItems;
+          }
+        }
+      } else {
+        // No persisted data - save initial seed data to IndexedDB
+        await Promise.all([
+          indexedDbApi.setWorkflowStage(db.workflowStage),
+          indexedDbApi.setSubcontractors(db.subcontractors),
+          indexedDbApi.setSelectionData(db.selectionData),
+          indexedDbApi.setBidData(db.bidData),
+          indexedDbApi.setAwardingData(db.awardingData),
+          indexedDbApi.setTenderPackages(db.tenderPackages),
+        ]);
+
+        // Save initial work items
+        for (const [packageId, workItems] of Object.entries(
+          db.workItemsByPackageId,
+        )) {
+          await indexedDbApi.setWorkItems(packageId, workItems);
+        }
+      }
+
+      isInitialized = true;
+    } catch (error) {
+      console.error("Failed to initialize database from IndexedDB:", error);
+      // On error, continue with in-memory data only
+      isInitialized = true;
+    }
+  })();
+
+  return initPromise;
+}
+
+/**
  * Mock database API object providing CRUD operations for all data entities.
  * All getter methods return deep clones to prevent accidental mutations.
- * All setter methods accept and store deep clones of the provided data.
+ * All setter methods accept and store deep clones of the provided data and
+ * automatically persist changes to IndexedDB for offline functionality.
+ *
+ * IMPORTANT: Call mockDb.initialize() on application startup to load persisted data.
  *
  * @namespace mockDb
  */
 export const mockDb = {
+  /**
+   * Initializes the database by loading persisted data from IndexedDB.
+   * Should be called once during application startup before any other operations.
+   *
+   * @returns {Promise<void>} Promise that resolves when initialization is complete
+   */
+  initialize: initializeDatabase,
+
+  /**
+   * Clears all persisted data from IndexedDB and resets to initial state.
+   * Useful for testing or providing a "reset" feature.
+   *
+   * @returns {Promise<void>} Promise that resolves when data is cleared
+   */
+  async clearPersistedData(): Promise<void> {
+    await indexedDbApi.clearAll();
+  },
+
   /**
    * Gets the current active workflow stage.
    *
@@ -132,11 +261,16 @@ export const mockDb = {
 
   /**
    * Sets the active workflow stage (changes the main navigation view).
+   * Automatically persists to IndexedDB.
    *
    * @param {WorkflowStage} stage - The workflow stage to activate
    */
   setWorkflowStage(stage: WorkflowStage) {
     db.workflowStage = stage;
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setWorkflowStage(stage).catch((error) => {
+      console.error("Failed to persist workflow stage:", error);
+    });
   },
 
   /**
@@ -151,12 +285,17 @@ export const mockDb = {
 
   /**
    * Replaces all work items for a specific tender package.
+   * Automatically persists to IndexedDB.
    *
    * @param {string} tenderPackageId - The ID of the tender package
    * @param {WorkItem[]} nextWorkItems - The new array of work items
    */
   setWorkItems(tenderPackageId: string, nextWorkItems: WorkItem[]) {
     db.workItemsByPackageId[tenderPackageId] = clone(nextWorkItems);
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setWorkItems(tenderPackageId, nextWorkItems).catch((error) => {
+      console.error("Failed to persist work items:", error);
+    });
   },
 
   /**
@@ -176,6 +315,7 @@ export const mockDb = {
    * Deletes all work items for a tender package and cleans up related data.
    * This cascades to remove selection data, invitation data, and awarding data
    * for all the deleted work items to maintain data consistency.
+   * Automatically persists changes to IndexedDB.
    *
    * @param {string} tenderPackageId - The ID of the tender package whose work items should be deleted
    */
@@ -217,6 +357,15 @@ export const mockDb = {
         ),
       ),
     };
+
+    // Persist all changes to IndexedDB (fire-and-forget)
+    Promise.all([
+      indexedDbApi.deleteWorkItems(tenderPackageId),
+      indexedDbApi.setSelectionData(db.selectionData),
+      indexedDbApi.setAwardingData(db.awardingData),
+    ]).catch((error) => {
+      console.error("Failed to persist work item deletion:", error);
+    });
   },
 
   /**
@@ -239,11 +388,16 @@ export const mockDb = {
 
   /**
    * Updates the state data for the contractor selection stage.
+   * Automatically persists to IndexedDB.
    *
    * @param {SelectionDataState} nextSelectionData - The new selection data state
    */
   setSelectionData(nextSelectionData: SelectionDataState) {
     db.selectionData = clone(nextSelectionData);
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setSelectionData(nextSelectionData).catch((error) => {
+      console.error("Failed to persist selection data:", error);
+    });
   },
 
   /**
@@ -257,11 +411,16 @@ export const mockDb = {
 
   /**
    * Updates the state data for the bid invitation stage.
+   * Automatically persists to IndexedDB.
    *
    * @param {BidDataState} nextBidData - The new bid data state
    */
   setBidData(nextBidData: BidDataState) {
     db.bidData = clone(nextBidData);
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setBidData(nextBidData).catch((error) => {
+      console.error("Failed to persist bid data:", error);
+    });
   },
 
   /**
@@ -275,11 +434,16 @@ export const mockDb = {
 
   /**
    * Updates the state data for the contract awarding stage.
+   * Automatically persists to IndexedDB.
    *
    * @param {AwardingDataState} nextAwardingData - The new awarding data state
    */
   setAwardingData(nextAwardingData: AwardingDataState) {
     db.awardingData = clone(nextAwardingData);
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setAwardingData(nextAwardingData).catch((error) => {
+      console.error("Failed to persist awarding data:", error);
+    });
   },
 
   /**
@@ -293,11 +457,16 @@ export const mockDb = {
 
   /**
    * Replaces all tender packages in the system.
+   * Automatically persists to IndexedDB.
    *
    * @param {TenderPackage[]} nextTenderPackages - The new array of tender packages
    */
   setTenderPackages(nextTenderPackages: TenderPackage[]) {
     db.tenderPackages = clone(nextTenderPackages);
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setTenderPackages(nextTenderPackages).catch((error) => {
+      console.error("Failed to persist tender packages:", error);
+    });
   },
 
   /**
