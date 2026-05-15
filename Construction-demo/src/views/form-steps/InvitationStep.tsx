@@ -1,6 +1,7 @@
 import { Mail, Send } from 'lucide-react';
 import { useState } from 'react';
 import Button from '../../components/Button';
+import { createInvitationsForShortlistedVendors } from '../../Invitation.ops';
 import { getSelectionViewData, persistWorkItems, setWorkItemStatuses } from '../../Selection.ops';
 import { buildInvitationEmailTemplateHtml } from '../invitationEmailTemplate';
 import type { TenderPackageFormData } from './TenderPackageForm.types';
@@ -93,6 +94,10 @@ export default function InvitationStep({
       const nextWorkItems = setWorkItemStatuses(invitationWorkItems, updates);
       persistWorkItems(tenderPackageId, nextWorkItems);
     }
+
+    // Create invitation records for all shortlisted vendors
+    const shortlistedVendorIds = shortlistedVendors.map(vendor => vendor.vendorId);
+    createInvitationsForShortlistedVendors(tenderPackageId, shortlistedVendorIds);
 
     setLastInvitationSentAt(new Date().toLocaleString());
   };

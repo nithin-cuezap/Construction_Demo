@@ -13,6 +13,7 @@ export const INITIAL_SELECTION_DATA: SelectionDataState = {
 export const INITIAL_INVITATION_DATA: InvitationDataState = {
   notesByItemId: {},
   sentItemIds: [],
+  invitationRecords: [],
 };
 
 export const INITIAL_AWARDING_DATA: AwardingDataState = {

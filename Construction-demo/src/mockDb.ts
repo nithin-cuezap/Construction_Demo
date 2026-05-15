@@ -11,6 +11,8 @@ import {
 import type {
   AwardingDataState,
   InvitationDataState,
+  InvitationRecord,
+  InvitationStatus,
   SelectionDataState,
   Subcontractor,
   TenderPackage,
@@ -154,5 +156,69 @@ export const mockDb = {
     const seq = (db.tenderPackages.length + 1).toString().padStart(3, "0");
     const date = new Date().toISOString().split("T")[0].replace(/-/g, "");
     return `TP-${seq}-${date}`;
+  },
+
+  getInvitationRecords(tenderPackageId: string): InvitationRecord[] {
+    return clone(
+      db.invitationData.invitationRecords.filter(
+        (record) => record.tenderPackageId === tenderPackageId,
+      ),
+    );
+  },
+
+  createInvitationRecords(
+    tenderPackageId: string,
+    subcontractorIds: string[],
+  ): InvitationRecord[] {
+    const now = new Date().toISOString();
+    const newRecords: InvitationRecord[] = subcontractorIds.map(
+      (subcontractorId) => ({
+        id: `invitation-${tenderPackageId}-${subcontractorId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        tenderPackageId,
+        subcontractorId,
+        status: "Invited" as InvitationStatus,
+        invitedAt: now,
+        lastUpdatedAt: now,
+      }),
+    );
+
+    db.invitationData = {
+      ...db.invitationData,
+      invitationRecords: [
+        ...db.invitationData.invitationRecords,
+        ...newRecords,
+      ],
+    };
+
+    return clone(newRecords);
+  },
+
+  updateInvitationStatus(
+    invitationId: string,
+    status: InvitationStatus,
+  ): InvitationRecord | null {
+    const recordIndex = db.invitationData.invitationRecords.findIndex(
+      (record) => record.id === invitationId,
+    );
+
+    if (recordIndex === -1) {
+      return null;
+    }
+
+    const updatedRecord: InvitationRecord = {
+      ...db.invitationData.invitationRecords[recordIndex],
+      status,
+      lastUpdatedAt: new Date().toISOString(),
+    };
+
+    const updatedRecords = [...db.invitationData.invitationRecords];
+    updatedRecords[recordIndex] = updatedRecord;
+
+    db.invitationData = {
+      ...db.invitationData,
+      invitationRecords: updatedRecords,
+    };
+
+    return clone(updatedRecord);
   },
 };
