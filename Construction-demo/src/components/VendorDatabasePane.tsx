@@ -4,9 +4,10 @@ import DraggableSubcontractorCard from './DraggableSubcontractorCard';
 
 interface VendorDatabasePaneProps {
   filteredSubs: Subcontractor[];
+  selectedElsewhereIds: Set<string>;
 }
 
-export default function VendorDatabasePane({ filteredSubs }: VendorDatabasePaneProps) {
+export default function VendorDatabasePane({ filteredSubs, selectedElsewhereIds }: VendorDatabasePaneProps) {
   return (
     <aside className="z-10 flex w-full min-w-0 flex-col border-l border-slate-200 bg-white text-xs xl:text-sm lg:basis-0 lg:flex-1">
       <div className="p-4 border-b border-slate-200 bg-slate-50">
@@ -25,7 +26,11 @@ export default function VendorDatabasePane({ filteredSubs }: VendorDatabasePaneP
       </div>
       <div className="overflow-y-auto flex-1 p-3 space-y-3 bg-slate-50/50">
         {filteredSubs.map(sub => (
-          <DraggableSubcontractorCard key={sub.id} sub={sub} />
+          <DraggableSubcontractorCard 
+            key={sub.id} 
+            sub={sub} 
+            isSelectedElsewhere={selectedElsewhereIds.has(sub.id)}
+          />
         ))}
         {filteredSubs.length === 0 && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-slate-500">

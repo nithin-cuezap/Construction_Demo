@@ -75,6 +75,18 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
     return [...filteredSubs].sort((left, right) => (orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (orderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER));
   }, [filteredSubs, vendorOrder]);
 
+  const vendorsSelectedElsewhere = useMemo(() => {
+    const selectedInOtherItems = new Set<string>();
+    Object.entries(assignmentsByItemId).forEach(([itemId, assignments]) => {
+      if (itemId !== activeItem?.id) {
+        [...assignments.carried, ...assignments.backups, ...assignments.review].forEach((sub) => {
+          selectedInOtherItems.add(sub.id);
+        });
+      }
+    });
+    return selectedInOtherItems;
+  }, [assignmentsByItemId, activeItem?.id]);
+
   const getVendorById = (subId: string): Subcontractor | undefined =>
     subcontractors.find((sub) => sub.id === subId);
 
@@ -284,7 +296,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
             <p className="text-xs text-slate-500 xl:text-sm">Drag vendors from the database into the review list.</p>
           </div>
           <div className="flex min-h-0 w-full flex-col lg:flex-1 lg:flex-row">
-            <VendorDatabasePane filteredSubs={orderedFilteredSubs} />
+            <VendorDatabasePane filteredSubs={orderedFilteredSubs} selectedElsewhereIds={vendorsSelectedElsewhere} />
             <ShortlistReviewPane
               activeItem={activeItem}
               activeAssignments={activeAssignments}
