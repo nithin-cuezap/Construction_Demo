@@ -62,9 +62,10 @@ export interface SelectionDataState {
  * Enumeration of possible bid statuses during the invitation and bidding process.
  * Tracks the progression of a subcontractor's response to a bid invitation.
  *
- * @typedef {"Invited" | "Bidding" | "Not Bidding" | "Not Sure" | "Bid Submitted"} BidStatus
+ * @typedef {"Invitation Pending" | "Invited" | "Bidding" | "Not Bidding" | "Not Sure" | "Bid Submitted"} BidStatus
  */
 export type BidStatus =
+  | "Invitation Pending"
   | "Invited"
   | "Bidding"
   | "Not Bidding"

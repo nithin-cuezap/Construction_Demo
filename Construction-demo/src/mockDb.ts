@@ -331,15 +331,17 @@ export const mockDb = {
 
   /**
    * Creates new bid records for multiple subcontractors on a tender package.
-   * All new records start with "Invited" status and are timestamped with the current time.
+   * Records start with "Invitation Pending" status by default and invitedAt is empty until invitation is sent.
    *
    * @param {string} tenderPackageId - The ID of the tender package
    * @param {string[]} subcontractorIds - Array of subcontractor IDs to invite
+   * @param {BidStatus} initialStatus - Initial status for the bid records (defaults to "Invitation Pending")
    * @returns {BidRecord[]} The newly created bid records
    */
   createBidRecords(
     tenderPackageId: string,
     subcontractorIds: string[],
+    initialStatus: BidStatus = "Invitation Pending",
   ): BidRecord[] {
     const now = new Date().toISOString();
 
@@ -348,8 +350,8 @@ export const mockDb = {
       id: `bid-${tenderPackageId}-${subcontractorId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       tenderPackageId,
       subcontractorId,
-      status: "Invited" as BidStatus,
-      invitedAt: now,
+      status: initialStatus,
+      invitedAt: initialStatus === "Invited" ? now : "",
       lastUpdatedAt: now,
     }));
 
@@ -393,12 +395,58 @@ export const mockDb = {
     updatedRecords[recordIndex] = updatedRecord;
 
     // Update the database state
-    // Update the database state
     db.bidData = {
       ...db.bidData,
       bidRecords: updatedRecords,
     };
 
     return clone(updatedRecord);
+  },
+
+  /**
+   * Marks bid records as invited for specific subcontractors in a tender package.
+   * Updates status to "Invited" and sets the invitedAt timestamp.
+   *
+   * @param {string} tenderPackageId - The ID of the tender package
+   * @param {string[]} subcontractorIds - Array of subcontractor IDs to mark as invited
+   * @returns {BidRecord[]} Array of updated bid records
+   */
+  markBidsAsInvited(
+    tenderPackageId: string,
+    subcontractorIds: string[],
+  ): BidRecord[] {
+    const now = new Date().toISOString();
+    const subcontractorIdSet = new Set(subcontractorIds);
+    
+    // Find and update matching bid records
+    const updatedRecords = db.bidData.bidRecords.map((record) => {
+      if (
+        record.tenderPackageId === tenderPackageId &&
+        subcontractorIdSet.has(record.subcontractorId)
+      ) {
+        return {
+          ...record,
+          status: "Invited" as BidStatus,
+          invitedAt: now,
+          lastUpdatedAt: now,
+        };
+      }
+      return record;
+    });
+
+    // Update the database state
+    db.bidData = {
+      ...db.bidData,
+      bidRecords: updatedRecords,
+    };
+
+    // Return only the updated records
+    return clone(
+      updatedRecords.filter(
+        (record) =>
+          record.tenderPackageId === tenderPackageId &&
+          subcontractorIdSet.has(record.subcontractorId),
+      ),
+    );
   },
 };

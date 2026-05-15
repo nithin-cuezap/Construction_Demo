@@ -1,10 +1,12 @@
 import { Mail, Send } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
-import { createInvitationsForShortlistedVendors } from '../../Invitation.ops';
+import Toggle from '../../components/Toggle';
+import { createInvitationsForShortlistedVendors, getInvitationRecords, sendInvitationsToVendors } from '../../Invitation.ops';
 import { getSelectionViewData, persistWorkItems, setWorkItemStatuses } from '../../Selection.ops';
 import { buildInvitationEmailTemplateHtml } from '../invitationEmailTemplate';
 import type { TenderPackageFormData } from './TenderPackageForm.types';
+import type { BidRecord } from '../../types';
 
 interface InvitationWorkItemSummary {
   id: string;
@@ -34,6 +36,8 @@ export default function InvitationStep({
 }: InvitationStepProps) {
   const [lastInvitationSentAt, setLastInvitationSentAt] = useState<string | null>(null);
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [bidRecords, setBidRecords] = useState<BidRecord[]>([]);
+  const [selectedVendorIds, setSelectedVendorIds] = useState<Set<string>>(new Set());
 
   const invitationSnapshot = getSelectionViewData(tenderPackageId);
   const invitationWorkItems = invitationSnapshot.workItems;
@@ -83,11 +87,42 @@ export default function InvitationStep({
   const shortlistedVendorCount = shortlistedVendors.length;
   const hasShortlistedVendors = shortlistedVendorCount > 0;
 
-  const handleSendInvitations = () => {
-    if (!hasShortlistedVendors) return;
+  // Create bid records for shortlisted vendors when the component loads
+  useEffect(() => {
+    if (hasShortlistedVendors) {
+      const shortlistedVendorIds = shortlistedVendors.map(vendor => vendor.vendorId);
+      createInvitationsForShortlistedVendors(tenderPackageId, shortlistedVendorIds);
+    }
+    // Fetch bid records to display invitation status
+    const records = getInvitationRecords(tenderPackageId);
+    setBidRecords(records);
+    
+    // Auto-select vendors that haven't been invited yet
+    const pendingVendorIds = new Set<string>();
+    shortlistedVendors.forEach(vendor => {
+      const bidRecord = records.find(r => r.subcontractorId === vendor.vendorId);
+      if (!bidRecord?.invitedAt) {
+        pendingVendorIds.add(vendor.vendorId);
+      }
+    });
+    setSelectedVendorIds(pendingVendorIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenderPackageId]);
 
+  const handleSendInvitations = () => {
+    if (selectedVendorIds.size === 0) return;
+
+    const selectedVendorIdsArray = Array.from(selectedVendorIds);
+    
+    // Update work item statuses for work items associated with selected vendors
+    const workItemsToUpdate = new Set<string>();
+    selectedVendorIdsArray.forEach(vendorId => {
+      const vendor = shortlistedVendors.find(v => v.vendorId === vendorId);
+      vendor?.workItems.forEach(wi => workItemsToUpdate.add(wi.id));
+    });
+    
     const updates = shortlistedByItem
-      .filter(({ item }) => item.status !== 'Invited')
+      .filter(({ item }) => workItemsToUpdate.has(item.id) && item.status !== 'Invited')
       .map(({ item }) => ({ id: item.id, status: 'Invited' }));
 
     if (updates.length > 0) {
@@ -95,12 +130,52 @@ export default function InvitationStep({
       persistWorkItems(tenderPackageId, nextWorkItems);
     }
 
-    // Create invitation records for all shortlisted vendors
-    const shortlistedVendorIds = shortlistedVendors.map(vendor => vendor.vendorId);
-    createInvitationsForShortlistedVendors(tenderPackageId, shortlistedVendorIds);
+    // Mark invitations as sent for selected vendors only
+    sendInvitationsToVendors(tenderPackageId, selectedVendorIdsArray);
+
+    // Refresh bid records to show updated invitation status
+    const updatedRecords = getInvitationRecords(tenderPackageId);
+    setBidRecords(updatedRecords);
+    
+    // Clear selection after sending
+    setSelectedVendorIds(new Set());
 
     setLastInvitationSentAt(new Date().toLocaleString());
   };
+
+  const handleToggleVendor = (vendorId: string, checked: boolean) => {
+    setSelectedVendorIds(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(vendorId);
+      } else {
+        next.delete(vendorId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedVendorIds(new Set(pendingVendorIds));
+    } else {
+      setSelectedVendorIds(new Set());
+    }
+  };
+
+  // Create a map of vendorId to bid record for quick lookup
+  const bidRecordMap = new Map<string, BidRecord>();
+  bidRecords.forEach(record => {
+    bidRecordMap.set(record.subcontractorId, record);
+  });
+
+  // Get list of vendors that haven't been invited yet
+  const pendingVendorIds = shortlistedVendors
+    .filter(vendor => {
+      const bidRecord = bidRecordMap.get(vendor.vendorId);
+      return !bidRecord?.invitedAt;
+    })
+    .map(v => v.vendorId);
 
   const selectedVendor = selectedVendorId 
     ? shortlistedVendors.find(v => v.vendorId === selectedVendorId)
@@ -140,11 +215,23 @@ export default function InvitationStep({
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900">Shortlisted Vendors</h3>
           <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-            {shortlistedVendorCount} selected
+            {shortlistedVendorCount} shortlisted
           </span>
         </div>
+        {pendingVendorIds.length > 0 && (
+          <div className="mb-3 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+            <span className="text-xs font-medium text-blue-800">
+              Select all pending vendors ({pendingVendorIds.length})
+            </span>
+            <Toggle
+              checked={selectedVendorIds.size === pendingVendorIds.length && pendingVendorIds.length > 0}
+              onChange={handleToggleAll}
+              size="md"
+            />
+          </div>
+        )}
         <p className="mb-3 text-xs text-slate-600">
-          Click on a vendor to preview their personalized invitation email
+          Select vendors to send invitations • Click to preview personalized email
         </p>
 
         {shortlistedVendors.length === 0 ? (
@@ -152,9 +239,23 @@ export default function InvitationStep({
             No shortlisted vendors found. Complete contractor shortlisting in Step 3 to prepare invitations.
           </p>
         ) : (
-          <div className="h-300 space-y-3 overflow-auto pr-1">
+          <div className="flex flex-1 flex-col max-h-[70vh] space-y-3 overflow-auto pr-1">
             {shortlistedVendors.map((vendor) => {
               const isSelected = vendor.vendorId === selectedVendorId;
+              const bidRecord = bidRecordMap.get(vendor.vendorId);
+              const invitedDate = bidRecord?.invitedAt 
+                ? new Date(bidRecord.invitedAt).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })
+                : null;
+              const isPending = !invitedDate;
+              const isChecked = selectedVendorIds.has(vendor.vendorId);
+              
               return (
                 <div 
                   key={vendor.vendorId} 
@@ -162,13 +263,42 @@ export default function InvitationStep({
                   className={`rounded-lg border p-3 cursor-pointer transition-all ${
                     isSelected 
                       ? 'border-blue-500 bg-blue-100 shadow-md' 
-                      : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                      : isPending && !isChecked
+                        ? 'border-slate-200 bg-slate-50 opacity-50 hover:border-slate-300 hover:opacity-60'
+                        : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
                   }`}
                 >
-                  <p className="text-sm font-semibold text-slate-900">{vendor.vendorName}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900">{vendor.vendorName}</p>
+                    <div className="flex items-center gap-2">
+                      {isPending && (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <Toggle
+                            checked={isChecked}
+                            onChange={(checked) => handleToggleVendor(vendor.vendorId, checked)}
+                            size="md"
+                          />
+                        </div>
+                      )}
+                    {invitedDate ? (
+                      <span className="ml-2 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Invited
+                      </span>
+                    ) : (
+                      <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        Pending
+                      </span>
+                      )}
+                    </div>
+                  </div>
                   <p className="mt-0.5 text-xs text-slate-600">
                     Trades {vendor.trades.join(', ')} | Rating {vendor.rating.toFixed(1)} | {vendor.projects} projects
                   </p>
+                  {invitedDate && (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Invited on: {invitedDate}
+                    </p>
+                  )}
 
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {vendor.workItems.map((item) => (
@@ -210,25 +340,29 @@ export default function InvitationStep({
             </p>
           </div>
         )}
-        <div className="h-300 overflow-auto rounded-lg border border-slate-300 bg-white p-2">
+        <div className="flex flex-1 max-h-[70vh] overflow-auto rounded-lg border border-slate-300 bg-white p-2">
           <div dangerouslySetInnerHTML={{ __html: emailTemplateHtml }} />
         </div>
 
         <div className="flex items-center justify-between px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-slate-800">Ready to invite shortlisted contractors.</p>
+            <p className="text-sm font-medium text-slate-800">
+              {selectedVendorIds.size > 0 
+                ? `Ready to invite ${selectedVendorIds.size} selected contractor${selectedVendorIds.size !== 1 ? 's' : ''}.`
+                : 'Select vendors to send invitations.'}
+            </p>
             <p className="text-xs text-slate-600">
               {lastInvitationSentAt
                 ? `Invitations last sent on ${lastInvitationSentAt}.`
-                : 'Send invitations after reviewing the email template.'}
+                : 'Review the email template before sending.'}
             </p>
           </div>
           <Button
             onClick={handleSendInvitations}
-            disabled={!hasShortlistedVendors}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={selectedVendorIds.size === 0}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
-            <Send size={14} /> Send Invitations
+            <Send size={14} /> Send to {selectedVendorIds.size > 0 ? selectedVendorIds.size : '...'}
           </Button>
         </div>
       </section>

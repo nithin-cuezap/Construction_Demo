@@ -8,7 +8,7 @@
  * @module Invitation.ops
  */
 
-import { createBidsForShortlistedVendors, getBidRecords } from "./Bid.ops";
+import { createBidsForShortlistedVendors, getBidRecords, markBidsAsInvited } from "./Bid.ops";
 import type { BidRecord } from "./types";
 
 /**
@@ -35,4 +35,19 @@ export function createInvitationsForShortlistedVendors(
   shortlistedVendorIds: string[],
 ): { newRecords: BidRecord[]; alreadyInvitedCount: number } {
   return createBidsForShortlistedVendors(tenderPackageId, shortlistedVendorIds);
+}
+
+/**
+ * Marks invitation records as sent for specific subcontractors.
+ * Updates status from "Invitation Pending" to "Invited" and sets the invitedAt timestamp.
+ *
+ * @param {string} tenderPackageId - The ID of the tender package
+ * @param {string[]} shortlistedVendorIds - Array of subcontractor IDs to mark as invited
+ * @returns {BidRecord[]} Array of updated invitation records
+ */
+export function sendInvitationsToVendors(
+  tenderPackageId: string,
+  shortlistedVendorIds: string[],
+): BidRecord[] {
+  return markBidsAsInvited(tenderPackageId, shortlistedVendorIds);
 }

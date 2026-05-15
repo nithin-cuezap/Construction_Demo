@@ -23,7 +23,7 @@ export function getBidRecords(tenderPackageId: string): BidRecord[] {
 
 /**
  * Creates new bid records for multiple subcontractors.
- * All records start with "Invited" status and current timestamp.
+ * All records start with "Invitation Pending" status by default.
  *
  * @param {string} tenderPackageId - The ID of the tender package
  * @param {string[]} subcontractorIds - Array of subcontractor IDs to create bids for
@@ -33,7 +33,7 @@ export function createBidRecords(
   tenderPackageId: string,
   subcontractorIds: string[],
 ): BidRecord[] {
-  return mockDb.createBidRecords(tenderPackageId, subcontractorIds);
+  return mockDb.createBidRecords(tenderPackageId, subcontractorIds, "Invitation Pending");
 }
 
 /**
@@ -83,4 +83,19 @@ export function createBidsForShortlistedVendors(
       : [];
 
   return { newRecords, alreadyInvitedCount };
+}
+
+/**
+ * Marks bid records as invited (sent) for specific subcontractors.
+ * Updates status from "Invitation Pending" to "Invited" and sets the invitedAt timestamp.
+ *
+ * @param {string} tenderPackageId - The ID of the tender package
+ * @param {string[]} subcontractorIds - Array of subcontractor IDs to mark as invited
+ * @returns {BidRecord[]} Array of updated bid records
+ */
+export function markBidsAsInvited(
+  tenderPackageId: string,
+  subcontractorIds: string[],
+): BidRecord[] {
+  return mockDb.markBidsAsInvited(tenderPackageId, subcontractorIds);
 }
