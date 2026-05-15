@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Main view for tender package management and workflow routing.
+ * 
+ * This view component handles the routing between tender package list and form views,
+ * manages the tender package CRUD operations, and maps workflow stages to URL routes.
+ * It serves as the parent container for all tender package-related screens.
+ * 
+ * @module views/TenderPackageView
+ */
+
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { deletePackage, savePackage } from '../TenderPackage.ops';
 import type { TenderPackage } from '../types';
@@ -5,13 +15,28 @@ import TenderPackageFormView from './TenderPackageFormView';
 import TenderPackageListView from './TenderPackageListView';
 import type { TenderPackageStep } from './form-steps/TenderPackageForm.types';
 
+/**
+ * Props for the TenderPackageView component.
+ * @interface TenderPackageViewProps
+ */
 interface TenderPackageViewProps {
+  /** Array of all tender packages */
   tenderPackages: TenderPackage[];
+  /** Callback to update the tender packages array */
   onUpdatePackages: (packages: TenderPackage[]) => void;
+  /** Callback when a package is saved */
   onPackageSaved: () => void;
+  /** Callback when the active package changes (for header display) */
   onActivePackageChange?: (pkg: TenderPackage | null) => void;
 }
 
+/**
+ * Main view component for tender package management.
+ * Provides routing between list and form views, and handles package operations.
+ * 
+ * @param {TenderPackageViewProps} props - Component props
+ * @returns {JSX.Element} Rendered tender package view with nested routes
+ */
 export default function TenderPackageView({
   tenderPackages,
   onUpdatePackages,
@@ -20,6 +45,10 @@ export default function TenderPackageView({
 }: TenderPackageViewProps) {
   const navigate = useNavigate();
 
+  /**
+   * Mapping of workflow step numbers to URL-friendly step names.
+   * Used for generating navigation URLs.
+   */
   const STEP_NAMES: Record<TenderPackageStep, string> = {
     1: 'primary-information',
     2: 'documents',
@@ -30,6 +59,10 @@ export default function TenderPackageView({
     7: 'closed',
   };
 
+  /**
+   * Reverse mapping of step names to step numbers.
+   * Used for parsing URLs back to step numbers.
+   */
   const STEP_NAME_TO_NUMBER: Record<string, TenderPackageStep> = {
     'primary-information': 1,
     'documents': 2,
@@ -40,6 +73,13 @@ export default function TenderPackageView({
     'closed': 7,
   };
 
+  /**
+   * Determines the appropriate form step based on the tender package status.
+   * Used when opening a package to navigate to the correct workflow stage.
+   * 
+   * @param {TenderPackage['status']} status - The tender package status
+   * @returns {TenderPackageStep} The corresponding form step number
+   */
   const getFormStepForStatus = (status: TenderPackage['status']): 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
     switch (status) {
       case 'Work Scoping & Contractor Shortlisting':

@@ -1,15 +1,44 @@
+/**
+ * @fileoverview Work item card component for displaying individual scope items.
+ * 
+ * Renders a clickable card showing work item details including section code,
+ * name, status, and assigned vendor count. Visual styling indicates active state.
+ * 
+ * @module components/WorkItem
+ */
+
 import { ChevronRight, Users } from "lucide-react";
 import type { WorkItem as WorkItemType } from '../types';
 
+/**
+ * Props for the WorkItem component.
+ * @interface WorkItemProps
+ */
 interface WorkItemProps {
+  /** The work item data to display */
   item: WorkItemType;
+  /** Whether this work item is currently selected/active */
   isActive: boolean;
+  /** Current status string for display */
   itemStatus: string;
+  /** Callback to set this item as active */
   setActiveItem: (item: WorkItemType) => void;
+  /** Function to map status strings to Tailwind color classes */
   getStatusColor: (status: string) => string;
+  /** Number of vendors assigned to this work item (default: 0) */
   vendorCount?: number;
 }
+
+/**
+ * A clickable card component representing a single work item.
+ * Shows section code, name, vendor count, and status badge.
+ * Highlights when active and provides hover feedback.
+ * 
+ * @param {WorkItemProps} props - Component props
+ * @returns {JSX.Element} Rendered work item card
+ */
 function WorkItem({ item, isActive, itemStatus, setActiveItem, getStatusColor, vendorCount = 0 }: WorkItemProps) {
+  // Get Tailwind color classes based on status
   const statusColor = getStatusColor(itemStatus);
   return (
     <div

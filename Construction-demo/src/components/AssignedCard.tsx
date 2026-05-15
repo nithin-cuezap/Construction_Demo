@@ -1,28 +1,60 @@
+/**
+ * @fileoverview Card component for displaying assigned subcontractors.
+ * 
+ * Shows subcontractor information in carried, backup, or review lists.
+ * Supports drag-and-drop reordering when sortable, and includes a remove button.
+ * Visual styling differs based on assignment type (carried vs backup/review).
+ * 
+ * @module components/AssignedCard
+ */
+
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Building2, CheckCircle2, GripVertical, Star, Trash2 } from 'lucide-react';
 import type { Subcontractor } from '../types';
 
+/**
+ * Props for the AssignedCard component.
+ * @interface AssignedCardProps
+ */
 interface AssignedCardProps {
+  /** The subcontractor data to display */
   sub: Subcontractor;
+  /** Callback function to remove this subcontractor */
   onRemove: () => void;
+  /** The type of assignment list this card appears in */
   type: 'carried' | 'backup' | 'review';
+  /** Whether drag-and-drop sorting is enabled (default: false) */
   sortable?: boolean;
+  /** Whether to hide the remove button (default: false) */
   hideRemove?: boolean;
 }
 
+/**
+ * A card displaying an assigned subcontractor with drag-and-drop and remove functionality.
+ * Visual style adapts based on assignment type - "carried" assignments show with
+ * green accents to indicate primary selection.
+ * 
+ * @param {AssignedCardProps} props - Component props
+ * @returns {JSX.Element} Rendered assigned subcontractor card
+ */
 export default function AssignedCard({ sub, onRemove, type, sortable = false, hideRemove = false }: AssignedCardProps) {
   const isCarried = type === 'carried';
+  
+  // Setup draggable functionality (only when sortable is true)
   const { attributes, listeners, setNodeRef: setDraggableNodeRef, isDragging } = useDraggable({
     id: sub.id,
     data: { listType: 'review', itemId: sub.id },
     disabled: !sortable,
   });
+  
+  // Setup droppable functionality for reordering (only when sortable is true)
   const { setNodeRef: setDroppableNodeRef, isOver } = useDroppable({
     id: sub.id,
     data: { listType: 'review', itemId: sub.id },
     disabled: !sortable,
   });
 
+  // Combine both refs into one to support both drag and drop on the same element
   const setNodeRef = (node: HTMLDivElement | null) => {
     setDraggableNodeRef(node);
     setDroppableNodeRef(node);

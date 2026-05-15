@@ -1,3 +1,19 @@
+/**
+ * @fileoverview View component for the contractor shortlisting workflow stage.
+ * 
+ * This is one of the most complex views in the application. It provides a drag-and-drop
+ * interface for managing work items and assigning subcontractors to review lists.
+ * The view is divided into three panes:
+ * - Left: Work items list
+ * - Center: Shortlist review pane with assigned subcontractors
+ * - Right: Vendor database with draggable subcontractor cards
+ * 
+ * Uses @dnd-kit for drag-and-drop functionality and manages local state for real-time
+ * updates before persisting to the database.
+ * 
+ * @module views/SelectionView
+ */
+
 import {
   closestCenter,
   DndContext,
@@ -30,31 +46,58 @@ import {
 } from '../Selection.ops';
 import type { Assignment, AwardingDataState, SelectionDataState, Subcontractor, WorkItem } from '../types';
 
+/**
+ * Props for the SelectionView component.
+ * @interface SelectionViewProps
+ */
 interface SelectionViewProps {
+  /** ID of the tender package being worked on */
   tenderPackageId: string;
+  /** Callback when shortlisting completion status changes */
   onShortlistingCompletionChange?: (isComplete: boolean) => void;
 }
 
+/**
+ * Contractor shortlisting view with drag-and-drop interface.
+ * Manages work items, subcontractor assignments, and review lists for a tender package.
+ * 
+ * @param {SelectionViewProps} props - Component props
+ * @returns {JSX.Element} Rendered selection view with three-pane layout
+ */
 export default function SelectionView({ tenderPackageId, onShortlistingCompletionChange }: SelectionViewProps) {
+  // Load initial data from database on mount
   const [initialSelectionViewData] = useState(() => getSelectionViewData(tenderPackageId));
+  
+  // Local state for real-time updates
   const [workItems, setWorkItems] = useState<WorkItem[]>(initialSelectionViewData.workItems);
   const [selectionData, setSelectionData] = useState<SelectionDataState>(initialSelectionViewData.selectionData);
   const [awardingData] = useState<AwardingDataState>(initialSelectionViewData.awardingData);
   const [activeItemId, setActiveItemId] = useState<string>(initialSelectionViewData.workItems[0]?.id ?? '');
   const subcontractors = useMemo(() => initialSelectionViewData.subcontractors, [initialSelectionViewData]);
+  
+  // Drag-and-drop state
   const [draggedSubId, setDraggedSubId] = useState<string | null>(null);
   const [draggedSubSource, setDraggedSubSource] = useState<'database' | 'review' | null>(null);
   const [vendorOrder, setVendorOrder] = useState<string[]>(() => initialSelectionViewData.subcontractors.map((sub) => sub.id));
 
+  /**
+   * Updates work items state and persists to database.
+   * @param {WorkItem[]} next - The new work items array
+   */
   const updateWorkItems = (next: WorkItem[]) => {
     setWorkItems(next);
     persistWorkItems(tenderPackageId, next);
   };
 
+  // Notify parent when all work items complete shortlisting
   useEffect(() => {
     onShortlistingCompletionChange?.(areAllWorkItemsShortlistingCompleted(workItems));
   }, [onShortlistingCompletionChange, workItems]);
 
+  /**
+   * Updates selection data state and persists to database.
+   * @param {SelectionDataState} next - The new selection data
+   */
   const updateSelectionData = (next: SelectionDataState) => {
     setSelectionData(next);
     persistSelectionData(next);

@@ -1,20 +1,51 @@
+/**
+ * @fileoverview Application header with branding and tender package context.
+ * 
+ * Displays organization branding, user info, and an optional secondary bar
+ * with active tender package details including submission countdown.
+ * 
+ * @module components/Header
+ */
+
 import { Building2, Calendar, Hash, Shield } from 'lucide-react';
 import branding from '../branding.config';
 import type { TenderPackage } from '../types';
 
+/**
+ * Props for the Header component.
+ * @interface HeaderProps
+ */
 interface HeaderProps {
+  /** The currently active tender package, if any. Shows context bar when provided. */
   activeTenderPackage?: TenderPackage | null;
 }
 
+/**
+ * Calculates the number of days until a given date.
+ * Positive values indicate future dates, negative values indicate past dates.
+ * 
+ * @param {string} dateStr - ISO 8601 date string
+ * @returns {number} Number of days until the date (negative if past)
+ */
 function daysUntil(dateStr: string): number {
   const due = new Date(dateStr);
   const today = new Date();
+  // Normalize to midnight for day-level comparison
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
   return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Application header component with dual-bar layout.
+ * Top bar shows organization branding and user info.
+ * Bottom bar (when tender package is active) shows package details and deadline countdown.
+ * 
+ * @param {HeaderProps} props - Component props
+ * @returns {JSX.Element} Rendered header with one or two bars
+ */
 export default function Header({ activeTenderPackage }: HeaderProps) {
+  // Calculate days until submission deadline if a package is active
   const days = activeTenderPackage
     ? daysUntil(activeTenderPackage.tenderSubmissionDueDate)
     : null;

@@ -1,27 +1,56 @@
+/**
+ * @fileoverview Draggable card component for subcontractors in the vendor database.
+ * 
+ * Displays subcontractor information with drag-and-drop functionality using @dnd-kit.
+ * Can be dragged from the vendor database to review lists. Shows visual feedback
+ * when selected elsewhere and during drag operations.
+ * 
+ * @module components/DraggableSubcontractorCard
+ */
+
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { GripVertical, Star } from 'lucide-react';
 import type { Subcontractor } from '../types';
 
+/**
+ * Props for the DraggableSubcontractorCard component.
+ * @interface DraggableSubcontractorCardProps
+ */
 interface DraggableSubcontractorCardProps {
+  /** The subcontractor data to display */
   sub: Subcontractor;
+  /** Whether this subcontractor is already selected in another work item */
   isSelectedElsewhere?: boolean;
 }
 
+/**
+ * A draggable card displaying subcontractor information from the vendor database.
+ * Supports drag-and-drop for adding subcontractors to work item review lists.
+ * Shows amber accent when the subcontractor is already selected elsewhere.
+ * 
+ * @param {DraggableSubcontractorCardProps} props - Component props
+ * @returns {JSX.Element} Rendered draggable subcontractor card
+ */
 export default function DraggableSubcontractorCard({ sub, isSelectedElsewhere = false }: DraggableSubcontractorCardProps) {
+  // Setup draggable functionality
   const { attributes, listeners, setNodeRef: setDraggableNodeRef, isDragging } = useDraggable({
     id: sub.id,
     data: { listType: 'database', itemId: sub.id },
   });
+  
+  // Setup droppable functionality for reordering
   const { setNodeRef: setDroppableNodeRef, isOver } = useDroppable({
     id: sub.id,
     data: { listType: 'database', itemId: sub.id },
   });
 
+  // Combine both refs into one to support both drag and drop on the same element
   const setNodeRef = (node: HTMLDivElement | null) => {
     setDraggableNodeRef(node);
     setDroppableNodeRef(node);
   };
 
+  // Visual indicator: amber if selected elsewhere, default slate/blue otherwise
   const leftBorderColor = isSelectedElsewhere 
     ? 'bg-amber-400 group-hover:bg-amber-500' 
     : 'bg-slate-200 group-hover:bg-blue-400';
