@@ -9,7 +9,7 @@
  */
 
 import { mockDb, type WorkflowStage } from "./mockDb";
-import type { TenderPackage } from "./types";
+import type { Subcontractor, TenderPackage } from "./types";
 
 export type { WorkflowStage } from "./mockDb";
 
@@ -116,4 +116,44 @@ export function deletePackage(
   mockDb.deleteWorkItemsForPackage(packageId);
   // Remove from the packages array
   return tenderPackages.filter((pkg) => pkg.id !== packageId);
+}
+
+/**
+ * Retrieves a single tender package by its unique identifier.
+ *
+ * This function is used in the bid submission view to display project
+ * details to vendors, including package name, description, site address,
+ * and due dates. Returns null if the package doesn't exist, allowing
+ * views to handle invalid package references gracefully.
+ *
+ * Acts as a convenience wrapper over mockDb.getTenderPackageById,
+ * following the pattern where all database operations go through .ops.ts files.
+ *
+ * @param {string} tenderPackageId - The unique identifier of the tender package
+ * @returns {TenderPackage | null} The tender package if found, or null if the package doesn't exist
+ */
+export function getTenderPackageById(
+  tenderPackageId: string,
+): TenderPackage | null {
+  return mockDb.getTenderPackageById(tenderPackageId);
+}
+
+/**
+ * Retrieves a single subcontractor by their unique identifier.
+ *
+ * This function is used in the bid submission view to display the
+ * vendor's company name and verify their identity. Essential for
+ * ensuring vendors see which company they're submitting on behalf of.
+ * Returns null if the subcontractor doesn't exist.
+ *
+ * Acts as a convenience wrapper over mockDb.getSubcontractorById,
+ * following the pattern where all database operations go through .ops.ts files.
+ *
+ * @param {string} subcontractorId - The unique identifier of the subcontractor
+ * @returns {Subcontractor | null} The subcontractor if found, or null if the subcontractor doesn't exist
+ */
+export function getSubcontractorById(
+  subcontractorId: string,
+): Subcontractor | null {
+  return mockDb.getSubcontractorById(subcontractorId);
 }

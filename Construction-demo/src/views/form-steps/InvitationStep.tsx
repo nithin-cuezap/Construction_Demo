@@ -1,12 +1,12 @@
 import { Mail, Send } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Button from '../../components/Button';
 import Toggle from '../../components/Toggle';
 import { createInvitationsForShortlistedVendors, getInvitationRecords, sendInvitationsToVendors } from '../../Invitation.ops';
 import { getSelectionViewData, persistWorkItems, setWorkItemStatuses } from '../../Selection.ops';
+import type { BidRecord } from '../../types';
 import { buildInvitationEmailTemplateHtml } from '../invitationEmailTemplate';
 import type { TenderPackageFormData } from './TenderPackageForm.types';
-import type { BidRecord } from '../../types';
 
 interface InvitationWorkItemSummary {
   id: string;
@@ -197,6 +197,12 @@ export default function InvitationStep({
     .slice(0, 3)
     .join(' ');
   const detailsUrl = window.location.href;
+  
+  // Get bidId for the selected vendor to generate correct URLs in the email
+  const selectedVendorBidId = selectedVendor 
+    ? bidRecordMap.get(selectedVendor.vendorId)?.id 
+    : undefined;
+  
   const emailTemplateHtml = buildInvitationEmailTemplateHtml({
     packageName: formData.packageName,
     packageControlNumber: formData.packageControlNumber,
@@ -208,6 +214,7 @@ export default function InvitationStep({
     contactTitle: formData.customerContactDetails.title,
     contactEmail: formData.customerContactDetails.email || 'procurement@organization.com',
     contactPhone: formData.customerContactDetails.phone || 'N/A',
+    bidId: selectedVendorBidId,
   });
   return (
     <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -13,6 +13,7 @@ export interface InvitationEmailTemplateInput {
   contactTitle?: string;
   contactEmail: string;
   contactPhone: string;
+  bidId?: string;
 }
 
 const escapeHtml = (value: string) =>
@@ -70,8 +71,8 @@ export function buildInvitationEmailTemplateHtml(
                 <p style="margin:0 0 16px 0; font-size:14px; color:#0f172a; line-height:1.6;">Dear ${input.contractorName ? escapeHtml(input.contractorName) : "Valued Contractor"},</p>
                 <p style="margin:0 0 20px 0; font-size:14px; color:#334155; line-height:1.6;">Thank you for your interest in our projects. We are pleased to invite you to submit a bid for the project listed below. Please review the scope of work carefully and confirm your participation before the submission deadline.</p>
                 <div style="margin-top:8px;">
-                  <a href="#" style="display:inline-block; margin-right:8px; background:#ffffff; color:#0e7490; border:1px solid #67e8f9; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Reply</a>
-                  <a href="#" style="display:inline-block; background:#0e7490; color:#ffffff; border:1px solid #0e7490; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Send Bid</a>
+                  <a href="mailto:${escapeHtml(input.contactEmail)}?subject=${encodeURIComponent(`Re: ${input.packageName} - ${input.packageControlNumber}`)}" style="display:inline-block; margin-right:8px; background:#ffffff; color:#0e7490; border:1px solid #67e8f9; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Reply</a>
+                  <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/submission` : "#"}" style="display:inline-block; background:#0e7490; color:#ffffff; border:1px solid #0e7490; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Send Bid</a>
                 </div>
               </td>
             </tr>
@@ -80,9 +81,9 @@ export function buildInvitationEmailTemplateHtml(
               <td style="padding:28px 24px; background:transparent; border-bottom:1px solid #e2e8f0;">
                 <p style="margin:0 0 16px 0; font-size:14px; color:#334155; line-height:1.6;">Let us know if you are bidding:</p>
                 <div style="margin-bottom:16px;">
-                  <a href="#" style="display:inline-block; margin:0 6px 6px 0; background:#15803d; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Bidding</a>
-                  <a href="#" style="display:inline-block; margin:0 6px 6px 0; background:#b91c1c; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Not Bidding</a>
-                  <a href="#" style="display:inline-block; margin:0 6px 6px 0; background:#475569; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Not Sure</a>
+                  <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/bidding` : "#"}" style="display:inline-block; margin:0 6px 6px 0; background:#15803d; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Bidding</a>
+                  <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/notbidding` : "#"}" style="display:inline-block; margin:0 6px 6px 0; background:#b91c1c; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Not Bidding</a>
+                  <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/tentative` : "#"}" style="display:inline-block; margin:0 6px 6px 0; background:#475569; color:#ffffff; border-radius:999px; padding:7px 13px; font-size:12px; font-weight:700; text-decoration:none;">Not Sure</a>
                 </div>
                 <p style="margin:0; font-size:12px; color:#92400e;">Note: If you select Not Bidding, we will not send you further updates for this invitation.</p>
               </td>

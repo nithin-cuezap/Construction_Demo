@@ -73,6 +73,39 @@ export type BidStatus =
   | "Bid Submitted";
 
 /**
+ * Generic uploaded file metadata structure.
+ * Used across the application for any file upload functionality.
+ *
+ * @interface UploadedFile
+ * @property {string} id - Unique identifier for the uploaded file
+ * @property {string} name - Original filename
+ * @property {number} size - File size in bytes
+ * @property {string} type - MIME type of the file
+ * @property {string} uploadedAt - ISO 8601 timestamp when file was uploaded
+ * @property {string} url - URL or path to access the file (S3 URL in production)
+ */
+export interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+  url: string;
+}
+
+/**
+ * Represents a file uploaded as part of a bid submission.
+ * Extends the base UploadedFile interface with bid-specific comment field.
+ *
+ * @interface BidSubmissionFile
+ * @extends UploadedFile
+ * @property {string} comment - Optional comment associated with this file
+ */
+export interface BidSubmissionFile extends UploadedFile {
+  comment: string;
+}
+
+/**
  * Represents a bid record linking a subcontractor to a tender package.
  * Tracks the bidding status and timeline for each invitation sent.
  *
@@ -83,6 +116,9 @@ export type BidStatus =
  * @property {BidStatus} status - Current status of the bid response
  * @property {string} invitedAt - ISO 8601 timestamp when invitation was sent
  * @property {string} lastUpdatedAt - ISO 8601 timestamp of most recent status update
+ * @property {BidSubmissionFile[]} files - Files uploaded as part of the bid submission
+ * @property {string} submissionComment - Overall comment for the bid submission
+ * @property {string} submittedAt - ISO 8601 timestamp when bid was submitted (empty if not yet submitted)
  */
 export interface BidRecord {
   id: string;
@@ -91,6 +127,9 @@ export interface BidRecord {
   status: BidStatus;
   invitedAt: string;
   lastUpdatedAt: string;
+  files: BidSubmissionFile[];
+  submissionComment: string;
+  submittedAt: string;
 }
 
 /**

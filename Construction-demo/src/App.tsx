@@ -24,6 +24,7 @@ import {
 import type { TenderPackage } from './types';
 // import AwardingView from './views/AwardingView';
 // import InvitationView from './views/InvitationView';
+import BidSubmissionView from './views/BidSubmissionView';
 import TenderPackageView from './views/TenderPackageView';
 
 /**
@@ -78,6 +79,10 @@ export default function App() {
       <Header activeTenderPackage={activeTenderPackage} />
       <div className="flex flex-1 overflow-hidden">
         <Routes>
+          {/* Bid Submission Route - accessed by vendors */}
+          <Route path="/tenderpackages/:bidId/submission" element={<BidSubmissionView />} />
+          
+          {/* Main Tender Package Routes */}
           <Route
             path="/tenderpackages/*"
             element={(

@@ -1,0 +1,441 @@
+/**
+ * @fileoverview Bid submission view for vendors/subcontractors.
+ * 
+ * This view is accessed by vendors to submit their bids for a specific tender package.
+ * Displays project details, allows file uploads with comments, and handles bid submission.
+ * 
+ * ## Workflow Overview
+ * 
+ * 1. Vendor receives a unique link containing their bid ID
+ * 2. View loads bid, tender package, and subcontractor data
+ * 3. Vendor reviews project details (name, description, address, due date)
+ * 4. Vendor uploads bid documents (PDF, Word, ZIP files)
+ * 5. Vendor adds optional comments to individual files
+ * 6. Vendor adds overall bid submission notes
+ * 7. Vendor clicks "Submit Bid" to finalize submission
+ * 8. Bid status updates to "Bid Submitted" (irreversible)
+ * 9. Success confirmation page is displayed with submission timestamp
+ * 
+ * ## URL Structure
+ * 
+ * Route: `/tenderpackages/:bidId/submission`
+ * 
+ * The bidId parameter uniquely identifies the bid record, which contains
+ * references to both the tender package and the subcontractor. This allows
+ * the view to load all necessary data from a single parameter.
+ * 
+ * ## State Management
+ * 
+ * The component maintains several pieces of state:
+ * - `bid`: The bid record being submitted
+ * - `tenderPackage`: Project details for display
+ * - `subcontractor`: Vendor company information
+ * - `files`: Array of uploaded files with comments
+ * - `submissionComment`: Overall bid notes
+ * - `submitting`: Loading state during submission
+ * - `submitted`: Success state after submission
+ * - `error`: Error messages for validation or failures
+ * 
+ * ## Conditional Rendering
+ * 
+ * The view has three distinct render states:
+ * 1. Loading: Displayed while fetching data or if data fails to load
+ * 2. Success: Displayed after successful bid submission (read-only)
+ * 3. Form: The main submission form for active bids
+ * 
+ * ## Data Operations
+ * 
+ * All database operations go through .ops.ts files following the
+ * mockdb.instructions.md pattern:
+ * - getBidById() - Loads bid record
+ * - getTenderPackageById() - Loads project details
+ * - getSubcontractorById() - Loads vendor information
+ * - submitBid() - Persists final submission
+ * 
+ * @module views/BidSubmissionView
+ */
+
+import { Building2, Calendar, CheckCircle, MapPin, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { getBidById, submitBid } from '../Bid.ops';
+import Button from '../components/Button';
+import FileUpload from '../components/FileUpload';
+import { getSubcontractorById, getTenderPackageById } from '../TenderPackage.ops';
+import type { BidRecord, BidSubmissionFile, Subcontractor, TenderPackage } from '../types';
+import { mockUploadFile } from '../utils/fileUpload';
+
+/**
+ * Bid submission view component for vendors.
+ * Accessed via /tenderpackages/:bidId/submission
+ * 
+ * @returns {JSX.Element} Rendered bid submission view
+ */
+export default function BidSubmissionView() {
+  const { bidId } = useParams<{ bidId: string }>();
+  const navigate = useNavigate();
+
+  const [bid, setBid] = useState<BidRecord | null>(null);
+  const [tenderPackage, setTenderPackage] = useState<TenderPackage | null>(null);
+  const [subcontractor, setSubcontractor] = useState<Subcontractor | null>(null);
+  const [files, setFiles] = useState<BidSubmissionFile[]>([]);
+  const [submissionComment, setSubmissionComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Loads and validates bid submission data on component mount.
+   * 
+   * This effect fetches three related entities:
+   * 1. Bid record - contains submission status and data
+   * 2. Tender package - provides project details for display
+   * 3. Subcontractor - identifies who is submitting the bid
+   * 
+   * If the bid has already been submitted, it loads the existing
+   * files and comments to display in read-only/success mode.
+   * 
+   * Error handling ensures all required data exists before rendering
+   * the submission form to prevent incomplete data scenarios.
+   */
+  useEffect(() => {
+    if (!bidId) {
+      setError('Invalid bid ID');
+      return;
+    }
+
+    // Fetch bid record to get submission status and related IDs
+    const bidData = getBidById(bidId);
+    if (!bidData) {
+      setError('Bid not found');
+      return;
+    }
+
+    // Fetch tender package for project details display
+    const packageData = getTenderPackageById(bidData.tenderPackageId);
+    if (!packageData) {
+      setError('Tender package not found');
+      return;
+    }
+
+    // Fetch subcontractor identity for display
+    const subcontractorData = getSubcontractorById(bidData.subcontractorId);
+    if (!subcontractorData) {
+      setError('Subcontractor not found');
+      return;
+    }
+
+    setBid(bidData);
+    setTenderPackage(packageData);
+    setSubcontractor(subcontractorData);
+
+    // Hydrate form with existing data if bid was already submitted
+    // This allows vendors to view their submitted bid
+    if (bidData.status === 'Bid Submitted') {
+      setFiles(bidData.files);
+      setSubmissionComment(bidData.submissionComment);
+      setSubmitted(true);
+    }
+  }, [bidId]);
+
+  /**
+   * Uploads a file for bid submission with comment field initialized.
+   * 
+   * Wraps the generic mockUploadFile function to add the bid-specific
+   * comment field. This allows the FileUpload component to remain generic
+   * while supporting bid-specific metadata.
+   * 
+   * @param {File} file - The browser File object to upload
+   * @returns {Promise<BidSubmissionFile>} Uploaded file with comment field
+   */
+  const uploadBidFile = async (file: File): Promise<BidSubmissionFile> => {
+    const uploadedFile = await mockUploadFile(file);
+    return {
+      ...uploadedFile,
+      comment: '', // Initialize empty comment for bid submissions
+    };
+  };
+
+  /**
+   * Handles adding newly uploaded files to the submission.
+   * Appends new files to existing file list, maintaining all previously
+   * uploaded files. Called by FileUpload component after successful upload.
+   * 
+   * @param {BidSubmissionFile[]} newFiles - Array of newly uploaded file metadata
+   */
+  const handleFilesUploaded = (newFiles: BidSubmissionFile[]) => {
+    setFiles((prev) => [...prev, ...newFiles]);
+  };
+
+  /**
+   * Handles removing a file from the submission.
+   * Filters out the file with matching ID from the files array.
+   * File can be removed before final bid submission to allow corrections.
+   * 
+   * @param {string} fileId - Unique identifier of the file to remove
+   */
+  const handleFileRemove = (fileId: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== fileId));
+  };
+
+  /**
+   * Handles updating a file's comment.
+   * Updates the comment property of a specific file while preserving
+   * all other file properties and maintaining array order.
+   * 
+   * @param {string} fileId - Unique identifier of the file to update
+   * @param {string} comment - New comment text for the file
+   */
+  const handleFileCommentChange = (fileId: string, comment: string) => {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, comment } : f))
+    );
+  };
+
+  /**
+   * Handles the final bid submission process.
+   * 
+   * Validates that at least one file is uploaded before allowing submission.
+   * Calls the submitBid operation which updates the bid status to "Bid Submitted",
+   * persists all files and comments, and records the submission timestamp.
+   * 
+   * On success, transitions to the success confirmation view.
+   * On failure, displays error message while preserving form state for retry.
+   * 
+   * @returns {Promise<void>} Resolves when submission completes or fails
+   */
+  const handleSubmit = async () => {
+    if (!bidId) return;
+
+    // Validate that at least one file is uploaded
+    // This is a business requirement for bid submissions
+    if (files.length === 0) {
+      setError('Please upload at least one file');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      // Persist bid submission with all files and comments
+      // This updates the bid status and cannot be undone
+      const result = submitBid(bidId, files, submissionComment);
+      if (result) {
+        setSubmitted(true);
+        setBid(result); // Update local state with submitted bid
+      } else {
+        throw new Error('Failed to submit bid');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Submission failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /**
+   * Loading state: Displays while fetching bid, package, and subcontractor data.
+   * Shows error message if data fetch fails, with navigation option to return.
+   */
+  if (!bid || !tenderPackage || !subcontractor) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-50">
+        <div className="text-center">
+          <p className="text-slate-600">
+            {error || 'Loading bid details...'}
+          </p>
+          {error && (
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => navigate('/tenderpackages')}
+            >
+              Return to Tender Packages
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Success state: Displays confirmation when bid has been successfully submitted.
+   * Shows submission timestamp and prevents re-submission by rendering read-only view.
+   * Vendors can only view their submitted bid, not modify it.
+   */
+  if (submitted && bid.status === 'Bid Submitted') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 p-8">
+        <div className="w-full max-w-3xl">
+          <div className="bg-white border border-green-200 rounded-2xl p-8 shadow-sm text-center">
+            <CheckCircle className="mx-auto mb-4 text-green-500" size={64} />
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Bid Submitted Successfully!</h1>
+            <p className="text-slate-600 mb-6">
+              Your bid for <strong>{tenderPackage.packageName}</strong> has been submitted.
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-slate-600">Submitted on</p>
+              <p className="text-lg font-semibold text-slate-900">
+                {new Date(bid.submittedAt).toLocaleString()}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/tenderpackages')}
+            >
+              Return to Tender Packages
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-5xl mx-auto p-8">
+        {/* Header */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6 shadow-sm">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-sm text-slate-500 mb-1">Bid Submission</p>
+              <h1 className="text-3xl font-bold text-slate-900">{tenderPackage.packageName}</h1>
+            </div>
+            <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm font-medium">
+              {bid.status}
+            </div>
+          </div>
+
+          {/* Subcontractor Name */}
+          <div className="bg-purple-50 border-l-4 border-purple-500 rounded-lg p-4 mb-4">
+            <div className="flex items-center gap-2">
+              <Building2 size={20} className="text-purple-600" />
+              <div>
+                <p className="text-xs text-purple-600 font-medium uppercase tracking-wide">Submitting as</p>
+                <p className="text-lg font-semibold text-purple-900">{subcontractor.name}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Project Details */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Project Description */}
+            {tenderPackage.projectDescription && (
+              <div className="md:col-span-2">
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Project Description</p>
+                <p className="text-slate-700">{tenderPackage.projectDescription}</p>
+              </div>
+            )}
+
+            {/* Site Address */}
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1 flex items-center gap-1">
+                <MapPin size={12} /> Site Address
+              </p>
+              <p className="text-slate-700">
+                {tenderPackage.siteAddress.street}<br />
+                {tenderPackage.siteAddress.city}, {tenderPackage.siteAddress.state} {tenderPackage.siteAddress.zipCode}
+              </p>
+            </div>
+
+            {/* Due Date */}
+            <div>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1 flex items-center gap-1">
+                <Calendar size={12} /> Contractor Bid Due Date
+              </p>
+              <p className="text-slate-900 font-semibold">
+                {new Date(tenderPackage.subContractorBidSubmissionDueDate).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* File Upload Section */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6 shadow-sm">
+          <div className="border-l-4 border-blue-500 pl-4 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-1">Upload Bid Documents</h2>
+            <p className="text-sm text-slate-600">
+              Upload your bid documents, quotes, and supporting materials. Add comments to provide context for each file.
+            </p>
+          </div>
+
+          <FileUpload
+            files={files}
+            uploadFunction={uploadBidFile}
+            onFilesUploaded={handleFilesUploaded}
+            onFileRemove={handleFileRemove}
+            disabled={submitting}
+            renderFileMetadata={(file, disabled) => (
+              <div>
+                <label htmlFor={`comment-${file.id}`} className="block text-xs font-medium text-slate-600 mb-1">
+                  Comment for this file (optional)
+                </label>
+                <textarea
+                  id={`comment-${file.id}`}
+                  value={file.comment}
+                  onChange={(e) => handleFileCommentChange(file.id, e.target.value)}
+                  disabled={disabled}
+                  placeholder="Add notes or description for this file..."
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  rows={2}
+                />
+              </div>
+            )}
+          />
+        </div>
+
+        {/* Overall Bid Comment Section */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6 shadow-sm">
+          <div className="border-l-4 border-green-500 pl-4 mb-4">
+            <h2 className="text-xl font-bold text-slate-900 mb-1">Bid Submission Notes</h2>
+            <p className="text-sm text-slate-600">
+              Add any overall comments, clarifications, or special considerations for your bid.
+            </p>
+          </div>
+
+          <textarea
+            value={submissionComment}
+            onChange={(e) => setSubmissionComment(e.target.value)}
+            disabled={submitting}
+            placeholder="Enter your overall bid comments here..."
+            className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            rows={6}
+          />
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-6">
+            {error}
+          </div>
+        )}
+
+        {/* Submit Button */}
+        <div className="flex justify-end gap-3">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/tenderpackages')}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={submitting || files.length === 0}
+            className="flex items-center gap-2"
+          >
+            <Send size={16} />
+            {submitting ? 'Submitting...' : 'Submit Bid'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

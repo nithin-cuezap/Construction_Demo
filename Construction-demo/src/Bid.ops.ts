@@ -9,7 +9,7 @@
  */
 
 import { mockDb } from "./mockDb";
-import type { BidRecord, BidStatus } from "./types";
+import type { BidRecord, BidStatus, BidSubmissionFile } from "./types";
 
 /**
  * Retrieves all bid records for a specific tender package.
@@ -33,7 +33,11 @@ export function createBidRecords(
   tenderPackageId: string,
   subcontractorIds: string[],
 ): BidRecord[] {
-  return mockDb.createBidRecords(tenderPackageId, subcontractorIds, "Invitation Pending");
+  return mockDb.createBidRecords(
+    tenderPackageId,
+    subcontractorIds,
+    "Invitation Pending",
+  );
 }
 
 /**
@@ -98,4 +102,44 @@ export function markBidsAsInvited(
   subcontractorIds: string[],
 ): BidRecord[] {
   return mockDb.markBidsAsInvited(tenderPackageId, subcontractorIds);
+}
+
+/**
+ * Retrieves a single bid record by its unique identifier.
+ *
+ * This function is commonly used when a vendor accesses their bid
+ * submission page via a direct link containing the bid ID.
+ * Returns null if the bid doesn't exist, allowing views to handle
+ * invalid or expired bid links gracefully.
+ *
+ * @param {string} bidId - The unique identifier of the bid record
+ * @returns {BidRecord | null} The bid record if found, or null if the bid doesn't exist
+ */
+export function getBidById(bidId: string): BidRecord | null {
+  return mockDb.getBidById(bidId);
+}
+
+/**
+ * Submits a vendor's bid with uploaded files and comments.
+ *
+ * This is the final operation in the bid submission workflow. Once called:
+ * - The bid status changes to "Bid Submitted" (irreversible)
+ * - All files and comments are permanently stored
+ * - A submission timestamp is recorded
+ * - The vendor can no longer modify their submission
+ *
+ * The function acts as a convenience wrapper over mockDb.submitBid,
+ * following the pattern where all database operations go through .ops.ts files.
+ *
+ * @param {string} bidId - The unique identifier of the bid record to submit
+ * @param {BidSubmissionFile[]} files - Array of uploaded file metadata, each with optional comment
+ * @param {string} submissionComment - Overall notes or clarifications for the entire bid submission
+ * @returns {BidRecord | null} The updated bid record with submission data, or null if bid ID is invalid
+ */
+export function submitBid(
+  bidId: string,
+  files: BidSubmissionFile[],
+  submissionComment: string,
+): BidRecord | null {
+  return mockDb.submitBid(bidId, files, submissionComment);
 }

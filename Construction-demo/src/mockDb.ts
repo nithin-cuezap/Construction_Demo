@@ -15,6 +15,7 @@
  * @module mockDb
  */
 
+import { indexedDbApi } from "./indexedDb";
 import {
   createInitialWorkItemsForPackage,
   INITIAL_AWARDING_DATA,
@@ -25,12 +26,12 @@ import {
   INITIAL_TENDER_PACKAGES,
   INITIAL_WORKFLOW_STAGE,
 } from "./initial-data";
-import { indexedDbApi } from "./indexedDb";
 import type {
   AwardingDataState,
   BidDataState,
   BidRecord,
   BidStatus,
+  BidSubmissionFile,
   SelectionDataState,
   Subcontractor,
   TenderPackage,
@@ -522,6 +523,9 @@ export const mockDb = {
       status: initialStatus,
       invitedAt: initialStatus === "Invited" ? now : "",
       lastUpdatedAt: now,
+      files: [],
+      submissionComment: "",
+      submittedAt: "",
     }));
 
     // Append new records to existing bid data
@@ -586,7 +590,7 @@ export const mockDb = {
   ): BidRecord[] {
     const now = new Date().toISOString();
     const subcontractorIdSet = new Set(subcontractorIds);
-    
+
     // Find and update matching bid records
     const updatedRecords = db.bidData.bidRecords.map((record) => {
       if (
@@ -617,5 +621,107 @@ export const mockDb = {
           subcontractorIdSet.has(record.subcontractorId),
       ),
     );
+  },
+
+  /**
+   * Retrieves a single bid record by its unique identifier.
+   * Returns a cloned copy to prevent direct mutation of database state.
+   *
+   * @param {string} bidId - The unique ID of the bid record to retrieve
+   * @returns {BidRecord | null} The bid record if found, or null if no matching record exists
+   */
+  getBidById(bidId: string): BidRecord | null {
+    const record = db.bidData.bidRecords.find((record) => record.id === bidId);
+    return record ? clone(record) : null;
+  },
+
+  /**
+   * Retrieves a single subcontractor by their unique identifier.
+   * Returns a cloned copy to prevent direct mutation of database state.
+   *
+   * @param {string} subcontractorId - The unique ID of the subcontractor to retrieve
+   * @returns {Subcontractor | null} The subcontractor if found, or null if no matching record exists
+   */
+  getSubcontractorById(subcontractorId: string): Subcontractor | null {
+    const subcontractor = db.subcontractors.find(
+      (sub) => sub.id === subcontractorId,
+    );
+    return subcontractor ? clone(subcontractor) : null;
+  },
+
+  /**
+   * Retrieves a single tender package by its unique identifier.
+   * Returns a cloned copy to prevent direct mutation of database state.
+   *
+   * @param {string} tenderPackageId - The unique ID of the tender package to retrieve
+   * @returns {TenderPackage | null} The tender package if found, or null if no matching record exists
+   */
+  getTenderPackageById(tenderPackageId: string): TenderPackage | null {
+    const tenderPackage = db.tenderPackages.find(
+      (pkg) => pkg.id === tenderPackageId,
+    );
+    return tenderPackage ? clone(tenderPackage) : null;
+  },
+
+  /**
+   * Submits a bid by persisting files, comments, and updating bid status.
+   *
+   * This operation is considered final - once a bid is submitted, its status
+   * changes to "Bid Submitted" and the submission timestamp is recorded.
+   * All uploaded files and comments are persisted with the bid record.
+   *
+   * The function performs the following state changes:
+   * 1. Updates bid status to "Bid Submitted"
+   * 2. Stores all uploaded file metadata
+   * 3. Saves the overall submission comment
+   * 4. Records the submission timestamp
+   * 5. Updates the lastUpdatedAt timestamp
+   *
+   * Data is automatically persisted to IndexedDB via the database layer.
+   *
+   * @param {string} bidId - The unique ID of the bid record to submit
+   * @param {BidSubmissionFile[]} files - Array of uploaded file metadata with comments
+   * @param {string} submissionComment - Overall comment/notes for the bid submission
+   * @returns {BidRecord | null} The updated bid record if found, or null if bid ID doesn't exist
+   */
+  submitBid(
+    bidId: string,
+    files: BidSubmissionFile[],
+    submissionComment: string,
+  ): BidRecord | null {
+    // Find the bid record index for in-place update
+    const recordIndex = db.bidData.bidRecords.findIndex(
+      (record) => record.id === bidId,
+    );
+
+    // Return null if bid doesn't exist (invalid ID)
+    if (recordIndex === -1) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+
+    // Create updated bid record with submission data
+    const updatedRecord: BidRecord = {
+      ...db.bidData.bidRecords[recordIndex],
+      files: clone(files), // Deep clone to prevent mutation
+      submissionComment,
+      status: "Bid Submitted", // Final status - cannot be changed
+      submittedAt: now, // Record when bid was submitted
+      lastUpdatedAt: now,
+    };
+
+    // Create new array with updated record to maintain immutability
+    const updatedRecords = [...db.bidData.bidRecords];
+    updatedRecords[recordIndex] = updatedRecord;
+
+    // Update database state (automatically persists to IndexedDB)
+    db.bidData = {
+      ...db.bidData,
+      bidRecords: updatedRecords,
+    };
+
+    // Return cloned copy to prevent external mutation
+    return clone(updatedRecord);
   },
 };
