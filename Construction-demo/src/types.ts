@@ -174,7 +174,13 @@ export interface WorkItem {
   sectionCode: string;
   sectionName: string;
   description: string;
-  status: string;
+  status:
+    | "Draft"
+    | "Not Shortlisted"
+    | "Shortlisting In-Progress"
+    | "Shortlisting Completed"
+    | "Invited"
+    | "Invited - Partial";
 }
 
 /**

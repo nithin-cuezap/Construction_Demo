@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   areAllWorkItemsShortlistingCompleted,
   getSelectionViewData,
+  isAnyWorkItemInvitationSent,
 } from '../Selection.ops';
 import { getNextPackageControlNumber } from '../TenderPackage.ops';
 import type { TenderPackage } from '../types';
@@ -95,10 +96,10 @@ export default function TenderPackageFormView({
       file: null as File | null,
     })) || []
   );
-  const [isShortlistingComplete, setIsShortlistingComplete] = useState(() =>
-    areAllWorkItemsShortlistingCompleted(
-      getSelectionViewData(formPackageId).workItems,
-    ),
+  const [isShortlistingComplete, setIsShortlistingComplete] = useState(() =>{
+    const workItems = getSelectionViewData(formPackageId).workItems;
+    return areAllWorkItemsShortlistingCompleted(workItems) || isAnyWorkItemInvitationSent(workItems);
+  }
   );
 
   const validatePrimaryInformation = () => {

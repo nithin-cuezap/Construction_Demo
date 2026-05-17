@@ -22,7 +22,7 @@ export default function InvitationView({
   onNext,
 }: InvitationViewProps) {
   const completedItemIds = workItems
-    .filter((item) => item.status === 'Shortlisting Completed' || item.status === 'Invited')
+    .filter((item) => item.status === 'Shortlisting Completed' || item.status === 'Invited' || item.status === 'Invited - Partial')
     .map((item) => item.id);
 
   // Count invitations sent based on bid records

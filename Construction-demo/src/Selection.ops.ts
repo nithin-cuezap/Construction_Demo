@@ -90,7 +90,7 @@ export function persistSelectionData(selectionData: SelectionDataState) {
 export function setWorkItemStatus(
   workItems: WorkItem[],
   itemId: string,
-  status: string,
+  status: WorkItem["status"],
 ): WorkItem[] {
   return workItems.map((item) =>
     item.id === itemId && item.status !== status ? { ...item, status } : item,
@@ -102,12 +102,12 @@ export function setWorkItemStatus(
  * More efficient than calling setWorkItemStatus multiple times.
  *
  * @param {WorkItem[]} workItems - Current array of work items
- * @param {Array<{id: string, status: string}>} updates - Array of status updates to apply
+ * @param {Array<{id: string, status: WorkItem["status"]}>} updates - Array of status updates to apply
  * @returns {WorkItem[]} New array with all specified updates applied
  */
 export function setWorkItemStatuses(
   workItems: WorkItem[],
-  updates: Array<{ id: string; status: string }>,
+  updates: Array<{ id: string; status: WorkItem["status"] }>,
 ): WorkItem[] {
   return workItems.map((item) => {
     const update = updates.find((u) => u.id === item.id);
@@ -128,6 +128,17 @@ export function areAllWorkItemsShortlistingCompleted(
   workItems: WorkItem[],
 ): boolean {
   return workItems.every((item) => item.status === "Shortlisting Completed");
+}
+
+/**
+ * Checks if atleast one work item has invitations sent.
+ * Used to determine if the package can advance to the next workflow stage.
+ *
+ * @param {WorkItem[]} workItems - Array of work items to check
+ * @returns {boolean} True if at least one item has status "Invitations Sent"
+ */
+export function isAnyWorkItemInvitationSent(workItems: WorkItem[]): boolean {
+  return workItems.some((item) => item.status === "Invited");
 }
 
 /**

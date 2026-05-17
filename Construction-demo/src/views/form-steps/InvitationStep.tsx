@@ -4,7 +4,7 @@ import Button from '../../components/Button';
 import Toggle from '../../components/Toggle';
 import { createInvitationsForShortlistedVendors, getInvitationRecords, sendInvitationsToVendors } from '../../Invitation.ops';
 import { getSelectionViewData, persistWorkItems, setWorkItemStatuses } from '../../Selection.ops';
-import type { BidRecord } from '../../types';
+import type { BidRecord, WorkItem } from '../../types';
 import { buildInvitationEmailTemplateHtml } from '../invitationEmailTemplate';
 import type { TenderPackageFormData } from './TenderPackageForm.types';
 
@@ -121,7 +121,7 @@ export default function InvitationStep({
       vendor?.workItems.forEach(wi => workItemsToUpdate.add(wi.id));
     });
     
-    const updates = shortlistedByItem
+    const updates: Array<{ id: string; status: WorkItem["status"] }> = shortlistedByItem
       .filter(({ item }) => workItemsToUpdate.has(item.id) && item.status !== 'Invited')
       .map(({ item }) => ({ id: item.id, status: 'Invited' }));
 
@@ -209,7 +209,10 @@ export default function InvitationStep({
     contractorName: selectedVendor?.vendorName,
     sectionNames: shortlistedSectionNames,
     synopsis,
+    siteLocation: formData.siteAddress ? `${formData.siteAddress.street}, ${formData.siteAddress.city}, ${formData.siteAddress.state} ${formData.siteAddress.zipCode}` : undefined,
     detailsUrl,
+    submissionDeadline: formData.subContractorBidSubmissionDueDate,
+    rfqDate: formData.subContractorRfqDueDate,
     contactName: formData.customerContactDetails.name || 'Procurement Team',
     contactTitle: formData.customerContactDetails.title,
     contactEmail: formData.customerContactDetails.email || 'procurement@organization.com',

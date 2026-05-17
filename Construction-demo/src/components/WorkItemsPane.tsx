@@ -1,6 +1,6 @@
 import { HardHat, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { Assignment, WorkItem as WorkItemType } from '../types';
+import type { Assignment, WorkItem, WorkItem as WorkItemType } from '../types';
 import Button from './Button';
 import type { CommitEditResult, DataEntryColumn } from './DataEntryTable';
 import DataEntryTable from './DataEntryTable';
@@ -21,8 +21,8 @@ interface WorkItemsPaneProps {
   workItems: WorkItemType[];
   activeItem: WorkItemType;
   setActiveItem: (item: WorkItemType) => void;
-  getStatusColor: (status: string) => string;
-  setWorkItemStatuses: (updates: Array<{ id: string; status: string }>) => void;
+  getStatusColor: (status: WorkItem["status"]) => string;
+  setWorkItemStatuses: (updates: Array<{ id: string; status: WorkItem["status"] }>) => void;
   assignments?: Record<string, Assignment>;
   onAddWorkItem: (sectionCode: string, sectionName: string, description: string) => void;
   onUpdateWorkItem: (itemId: string, sectionCode: string, sectionName: string, description: string) => void;
@@ -47,9 +47,12 @@ export default function WorkItemsPane({
   const [editingDescription, setEditingDescription] = useState('');
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
 
+  const canFinalizeWorkItem = (status: WorkItem['status']) =>
+    status !== 'Draft' && status !== 'Shortlisting Completed' && status !== 'Invited' && status !== 'Invited - Partial';
+
   const finalizeAll = () => {
-    const updates = workItems
-      .filter((wi) => wi.status !== 'Shortlisting Completed')
+    const updates: Array<{ id: string; status: WorkItem["status"] }> = workItems
+      .filter((wi) => canFinalizeWorkItem(wi.status))
       .map((wi) => ({ id: wi.id, status: 'Shortlisting Completed' }));
 
     if (updates.length > 0) {
@@ -129,7 +132,7 @@ export default function WorkItemsPane({
     return true;
   };
 
-  const hasEligible = workItems.some((wi) => wi.status !== 'Draft' && wi.status !== 'Shortlisting Completed');
+  const hasEligible = workItems.some((wi) => canFinalizeWorkItem(wi.status));
 
   const getRowClassName = (row: UnifiedRow, isActive: boolean) => {
     if (isActive) {

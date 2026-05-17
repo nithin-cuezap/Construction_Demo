@@ -36,6 +36,7 @@ import {
   getAssignmentsByItemId,
   getSelectionFilteredSubs,
   getSelectionViewData,
+  isAnyWorkItemInvitationSent,
   moveSelectionReviewSubToEnd,
   persistSelectionData,
   persistWorkItems,
@@ -91,7 +92,7 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
 
   // Notify parent when all work items complete shortlisting
   useEffect(() => {
-    onShortlistingCompletionChange?.(areAllWorkItemsShortlistingCompleted(workItems));
+    onShortlistingCompletionChange?.((areAllWorkItemsShortlistingCompleted(workItems) || isAnyWorkItemInvitationSent(workItems)));
   }, [onShortlistingCompletionChange, workItems]);
 
   /**
@@ -144,12 +145,16 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
     return next;
   };
 
+  const isInvitedStatus = (status: WorkItem["status"]) => 
+    status === 'Invited' || status === 'Invited - Partial';
+
   const handleSelectItem = (item: WorkItem) => {
     setActiveItemId(item.id);
   };
 
   const handleRemoveSub = (zone: 'carried' | 'backup' | 'review', subId: string) => {
     if (zone !== 'review') return;
+    if (isInvitedStatus(activeItem.status)) return;
     const itemId = activeItem.id;
     const next = removeSelectionReviewSub(selectionData, itemId, subId);
     const nextReview = next.reviewByItemId[itemId] ?? [];
@@ -157,17 +162,25 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
     handleShortlistChanged(itemId, nextReview.length);
   };
 
-  const handleSetWorkItemStatus = (itemId: string, status: string) => {
+  const handleSetWorkItemStatus = (itemId: string, status: WorkItem["status"]) => {
+    const targetItem = workItems.find((item) => item.id === itemId);
+    if (!targetItem || isInvitedStatus(targetItem.status)) return;
     updateWorkItems(setWorkItemStatus(workItems, itemId, status));
   };
 
-  const handleSetWorkItemStatuses = (updates: Array<{ id: string; status: string }>) => {
-    updateWorkItems(setWorkItemStatuses(workItems, updates));
+  const handleSetWorkItemStatuses = (updates: Array<{ id: string; status: WorkItem["status"] }>) => {
+    const editableUpdates = updates.filter(({ id }) => {
+      const item = workItems.find((workItem) => workItem.id === id);
+      return item ? !isInvitedStatus(item.status) : false;
+    });
+    if (editableUpdates.length === 0) return;
+    updateWorkItems(setWorkItemStatuses(workItems, editableUpdates));
   };
 
   const handleShortlistChanged = (itemId: string, nextReviewCount: number) => {
     const currentStatus = workItems.find((item) => item.id === itemId)?.status;
     if (!currentStatus) return;
+    if (isInvitedStatus(currentStatus)) return;
 
     if (currentStatus === 'Shortlisting Completed') {
       handleSetWorkItemStatus(itemId, 'Shortlisting In-Progress');
@@ -199,6 +212,9 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
   };
 
   const handleUpdateWorkItem = (itemId: string, sectionCode: string, sectionName: string, description: string) => {
+    const targetItem = workItems.find((item) => item.id === itemId);
+    if (!targetItem || isInvitedStatus(targetItem.status)) return;
+
     const normalizedSectionCode = sectionCode.trim();
     const normalizedSectionName = sectionName.trim();
     const normalizedDescription = description.trim();
@@ -215,6 +231,8 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
 
   const handleDeleteWorkItem = (itemId: string) => {
     if (workItems.length <= 1) return;
+    const targetItem = workItems.find((item) => item.id === itemId);
+    if (!targetItem || isInvitedStatus(targetItem.status)) return;
 
     const nextWorkItems = workItems.filter((item) => item.id !== itemId);
     updateWorkItems(nextWorkItems);
@@ -241,6 +259,8 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
         return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'Invited':
         return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'Invited - Partial':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'Bids Received':
         return 'bg-amber-100 text-amber-700 border-amber-200';
       case 'Awarded':
@@ -262,6 +282,8 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
   const handleDragEnd = (event: DragEndEvent) => {
     setDraggedSubId(null);
     setDraggedSubSource(null);
+
+    if (isInvitedStatus(activeItem.status)) return;
 
     const { over, active } = event;
     if (!over) return;
@@ -336,16 +358,30 @@ export default function SelectionView({ tenderPackageId, onShortlistingCompletio
               <ChevronRight size={14} />
               <span className="text-slate-900">{activeItem.sectionName}</span>
             </div>
-            <p className="text-xs text-slate-500 xl:text-sm">Drag vendors from the database into the review list.</p>
+            {isInvitedStatus(activeItem.status) ? (
+              <div className="flex items-start gap-2 rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800">
+                <svg className="w-4 h-4 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <p>This work item has been invited. To shortlist additional vendors, please create a new work item.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 xl:text-sm">Drag vendors from the database into the review list.</p>
+            )}
           </div>
           <div className="flex min-h-0 w-full flex-col lg:flex-1 lg:flex-row">
-            <VendorDatabasePane filteredSubs={orderedFilteredSubs} selectedElsewhereIds={vendorsSelectedElsewhere} />
+            <VendorDatabasePane 
+              filteredSubs={orderedFilteredSubs} 
+              selectedElsewhereIds={vendorsSelectedElsewhere}
+              disabled={isInvitedStatus(activeItem.status)}
+            />
             <ShortlistReviewPane
               activeItem={activeItem}
               activeAssignments={activeAssignments}
               activeDragSource={draggedSubSource}
               removeSub={handleRemoveSub}
               setWorkItemStatus={handleSetWorkItemStatus}
+              disabled={isInvitedStatus(activeItem.status)}
             />
           </div>
         </div>

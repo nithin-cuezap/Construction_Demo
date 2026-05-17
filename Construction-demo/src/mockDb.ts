@@ -534,6 +534,11 @@ export const mockDb = {
       bidRecords: [...db.bidData.bidRecords, ...newRecords],
     };
 
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setBidData(db.bidData).catch((error) => {
+      console.error("Failed to persist bid data:", error);
+    });
+
     return clone(newRecords);
   },
 
@@ -572,6 +577,11 @@ export const mockDb = {
       ...db.bidData,
       bidRecords: updatedRecords,
     };
+
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setBidData(db.bidData).catch((error) => {
+      console.error("Failed to persist bid data:", error);
+    });
 
     return clone(updatedRecord);
   },
@@ -612,6 +622,11 @@ export const mockDb = {
       ...db.bidData,
       bidRecords: updatedRecords,
     };
+
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setBidData(db.bidData).catch((error) => {
+      console.error("Failed to persist bid data:", error);
+    });
 
     // Return only the updated records
     return clone(
@@ -715,11 +730,16 @@ export const mockDb = {
     const updatedRecords = [...db.bidData.bidRecords];
     updatedRecords[recordIndex] = updatedRecord;
 
-    // Update database state (automatically persists to IndexedDB)
+    // Update database state
     db.bidData = {
       ...db.bidData,
       bidRecords: updatedRecords,
     };
+
+    // Persist to IndexedDB (fire-and-forget for sync API compatibility)
+    indexedDbApi.setBidData(db.bidData).catch((error) => {
+      console.error("Failed to persist bid data:", error);
+    });
 
     // Return cloned copy to prevent external mutation
     return clone(updatedRecord);
