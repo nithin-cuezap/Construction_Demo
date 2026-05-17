@@ -8,6 +8,7 @@ export interface InvitationEmailTemplateInput {
   synopsis: string;
   siteLocation?: string;
   submissionDeadline?: string;
+  rfqDate?: string;
   detailsUrl: string;
   contactName: string;
   contactTitle?: string;
@@ -72,6 +73,7 @@ export function buildInvitationEmailTemplateHtml(
                 <p style="margin:0 0 20px 0; font-size:14px; color:#334155; line-height:1.6;">Thank you for your interest in our projects. We are pleased to invite you to submit a bid for the project listed below. Please review the scope of work carefully and confirm your participation before the submission deadline.</p>
                 <div style="margin-top:8px;">
                   <a href="mailto:${escapeHtml(input.contactEmail)}?subject=${encodeURIComponent(`Re: ${input.packageName} - ${input.packageControlNumber}`)}" style="display:inline-block; margin-right:8px; background:#ffffff; color:#0e7490; border:1px solid #67e8f9; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Reply</a>
+                  <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/rfq` : "#"}" style="display:inline-block; margin-right:8px; background:#ffffff; color:#0e7490; border:1px solid #67e8f9; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Raise RFQ</a>
                   <a href="${input.bidId ? `${window.location.origin}/#/tenderpackages/${escapeHtml(input.bidId)}/submission` : "#"}" style="display:inline-block; background:#0e7490; color:#ffffff; border:1px solid #0e7490; border-radius:7px; padding:8px 14px; font-size:13px; font-weight:600; text-decoration:none;">Send Bid</a>
                 </div>
               </td>
@@ -96,6 +98,7 @@ export function buildInvitationEmailTemplateHtml(
                 <div style="font-size:14px; margin-bottom:14px;"><strong style="color:#0f172a;">Scope of Work:</strong> <span style="color:#334155;">${escapeHtml(input.synopsis || "Please refer to the tender package documents for scope details.")}</span></div>
                 ${input.siteLocation ? `<div style="font-size:14px; margin-bottom:14px;"><strong style="color:#0f172a;">Site Location:</strong> <span style="color:#334155;">${escapeHtml(input.siteLocation)}</span></div>` : ""}
                 ${input.submissionDeadline ? `<div style="font-size:14px; margin-bottom:14px;"><strong style="color:#0f172a;">Submission Deadline:</strong> <span style="color:#334155;">${escapeHtml(input.submissionDeadline)}</span></div>` : ""}
+                ${input.rfqDate ? `<div style="font-size:14px; margin-bottom:14px;"><strong style="color:#0f172a;">RFQ Date:</strong> <span style="color:#334155;">${escapeHtml(input.rfqDate)}</span></div>` : ""}
                 <div style="font-size:14px;"><a href="${escapeHtml(input.detailsUrl)}" style="color:#4338ca; font-weight:600; text-decoration:underline;">View complete tender documents</a></div>
               </td>
             </tr>
