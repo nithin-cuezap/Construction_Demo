@@ -21,6 +21,7 @@ import SelectionView from './SelectionView';
 interface TenderPackageFormViewProps {
   editingPackage?: TenderPackage;
   currentStep: TenderPackageStep;
+  onCreateAndContinue: (packageData: TenderPackage, nextStep: TenderPackageStep) => void;
   onSaveAndContinue: (packageData: TenderPackage, nextStep: TenderPackageStep) => void;
   onSaveAndExit: (packageData: TenderPackage) => void;
   onCancel: () => void;
@@ -29,6 +30,7 @@ interface TenderPackageFormViewProps {
 export default function TenderPackageFormView({
   editingPackage,
   currentStep,
+  onCreateAndContinue,
   onSaveAndContinue,
   onSaveAndExit,
   onCancel,
@@ -136,6 +138,10 @@ export default function TenderPackageFormView({
     if (currentStep === 3 && !isShortlistingComplete) return;
     if (currentStep < TOTAL_STEPS) {
       const nextStep = (currentStep + 1) as TenderPackageStep;
+      if (!editingPackage && currentStep === 1) {
+        onCreateAndContinue(buildPackageToSave(), nextStep);
+        return;
+      }
       onSaveAndContinue(buildPackageToSave(), nextStep);
     }
   };

@@ -8,16 +8,15 @@
  * @module views/TenderPackageView
  */
 
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { deletePackage, savePackage } from '../TenderPackage.ops';
 import type { TenderPackage } from '../types';
-import TenderPackageFormView from './TenderPackageFormView';
+import TenderPackageFormRoute from './TenderPackageFormRoute';
 import TenderPackageListView from './TenderPackageListView';
 import type { TenderPackageStep } from './form-steps/TenderPackageForm.types';
 
 /**
  * Props for the TenderPackageView component.
- * @interface TenderPackageViewProps
  */
 interface TenderPackageViewProps {
   /** Array of all tender packages */
@@ -31,11 +30,43 @@ interface TenderPackageViewProps {
 }
 
 /**
+ * Mapping of workflow step numbers to URL-friendly step names.
+ * Centralized to ensure consistency across routing and navigation.
+ */
+const STEP_NAMES: Record<TenderPackageStep, string> = {
+  1: 'primary-information',
+  2: 'documents',
+  3: 'work-scoping-shortlisting',
+  4: 'bid-invitation',
+  5: 'bid-review',
+  6: 'finalized',
+  7: 'closed',
+};
+
+/**
+ * Reverse mapping of step names to step numbers.
+ * Used for parsing URL parameters back to workflow steps.
+ */
+const STEP_NAME_TO_NUMBER: Record<string, TenderPackageStep> = {
+  'primary-information': 1,
+  'documents': 2,
+  'work-scoping-shortlisting': 3,
+  'bid-invitation': 4,
+  'bid-review': 5,
+  'finalized': 6,
+  'closed': 7,
+};
+
+/**
  * Main view component for tender package management.
- * Provides routing between list and form views, and handles package operations.
+ * Orchestrates routing between list and form views, and delegates package operations.
  * 
- * @param {TenderPackageViewProps} props - Component props
- * @returns {JSX.Element} Rendered tender package view with nested routes
+ * @param props - Component props
+ * @param props.tenderPackages - Array of all tender packages
+ * @param props.onUpdatePackages - Callback to update the tender packages array
+ * @param props.onPackageSaved - Callback when a package is saved
+ * @param props.onActivePackageChange - Callback when the active package changes (for header display)
+ * @returns Rendered tender package view with nested routes
  */
 export default function TenderPackageView({
   tenderPackages,
@@ -46,41 +77,13 @@ export default function TenderPackageView({
   const navigate = useNavigate();
 
   /**
-   * Mapping of workflow step numbers to URL-friendly step names.
-   * Used for generating navigation URLs.
-   */
-  const STEP_NAMES: Record<TenderPackageStep, string> = {
-    1: 'primary-information',
-    2: 'documents',
-    3: 'work-scoping-shortlisting',
-    4: 'bid-invitation',
-    5: 'bid-review',
-    6: 'finalized',
-    7: 'closed',
-  };
-
-  /**
-   * Reverse mapping of step names to step numbers.
-   * Used for parsing URLs back to step numbers.
-   */
-  const STEP_NAME_TO_NUMBER: Record<string, TenderPackageStep> = {
-    'primary-information': 1,
-    'documents': 2,
-    'work-scoping-shortlisting': 3,
-    'bid-invitation': 4,
-    'bid-review': 5,
-    'finalized': 6,
-    'closed': 7,
-  };
-
-  /**
    * Determines the appropriate form step based on the tender package status.
-   * Used when opening a package to navigate to the correct workflow stage.
+   * Falls back to primary-information for Draft or unknown statuses.
    * 
-   * @param {TenderPackage['status']} status - The tender package status
-   * @returns {TenderPackageStep} The corresponding form step number
+   * @param status - The tender package status
+   * @returns The corresponding form step number
    */
-  const getFormStepForStatus = (status: TenderPackage['status']): 1 | 2 | 3 | 4 | 5 | 6 | 7 => {
+  const getFormStepForStatus = (status: TenderPackage['status']): TenderPackageStep => {
     switch (status) {
       case 'Work Scoping & Contractor Shortlisting':
         return 3;
@@ -98,17 +101,13 @@ export default function TenderPackageView({
     }
   };
 
-  const parseStep = (stepParam: string | undefined): TenderPackageStep | null => {
-    if (!stepParam) return null;
-    const stepNumber = STEP_NAME_TO_NUMBER[stepParam];
-    return stepNumber || null;
-  };
-
+  // Clear active package when creating new
   const handleAddNewPackage = () => {
     onActivePackageChange?.(null);
     navigate('/tenderpackages/new/primary-information');
   };
 
+  // Resume editing from saved workflow stage or status-based step
   const handleEditPackage = (packageId: string) => {
     const existingPackage = tenderPackages.find((pkg) => pkg.id === packageId);
     const targetStep = existingPackage
@@ -134,40 +133,19 @@ export default function TenderPackageView({
     onUpdatePackages(deletePackage(tenderPackages, packageId));
   };
 
-  const FormRoute = () => {
-    const { packageId, stepName } = useParams<{ packageId?: string; stepName: string }>();
-    const currentStep = parseStep(stepName);
+  const handleCreateAndContinue = (packageData: TenderPackage, nextStep: TenderPackageStep) => {
+    const saved = { ...packageData, workflowStage: nextStep };
+    onUpdatePackages(savePackage(tenderPackages, saved, null));
+    onActivePackageChange?.(saved);
+    navigate(`/tenderpackages/${saved.id}/${STEP_NAMES[nextStep]}`);
+  };
 
-    if (!currentStep) {
-      if (packageId && packageId !== 'new') {
-        return <Navigate to={`/tenderpackages/${packageId}/primary-information`} replace />;
-      }
-      return <Navigate to="/tenderpackages/new/primary-information" replace />;
-    }
-
-    const editingPackageId = packageId && packageId !== 'new' ? packageId : null;
-    const editingPackage = editingPackageId
-      ? tenderPackages.find((pkg) => pkg.id === editingPackageId)
-      : undefined;
-
-    if (editingPackageId && !editingPackage) {
-      return <Navigate to="/tenderpackages" replace />;
-    }
-
-    return (
-      <TenderPackageFormView
-        editingPackage={editingPackage}
-        currentStep={currentStep}
-        onSaveAndContinue={(packageData, nextStep) => {
-          const saved = { ...packageData, workflowStage: nextStep };
-          onUpdatePackages(savePackage(tenderPackages, saved, editingPackageId));
-          onActivePackageChange?.(saved);
-          navigate(`/tenderpackages/${saved.id}/${STEP_NAMES[nextStep]}`);
-        }}
-        onSaveAndExit={(packageData) => handleSavePackage(packageData, editingPackageId)}
-        onCancel={handleBackToList}
-      />
-    );
+  // Update package and workflow stage when continuing to next step
+  const handleSaveAndContinue = (packageData: TenderPackage, nextStep: TenderPackageStep) => {
+    const saved = { ...packageData, workflowStage: nextStep };
+    onUpdatePackages(savePackage(tenderPackages, saved, packageData.id));
+    onActivePackageChange?.(saved);
+    navigate(`/tenderpackages/${saved.id}/${STEP_NAMES[nextStep]}`);
   };
 
   return (
@@ -175,19 +153,46 @@ export default function TenderPackageView({
       <Routes>
         <Route
           index
-          element={(
+          element={
             <TenderPackageListView
               packages={tenderPackages}
               onAddNew={handleAddNewPackage}
               onEdit={handleEditPackage}
               onDelete={handleDeletePackage}
             />
-          )}
+          }
         />
-        <Route path="new/:stepName" element={<FormRoute />} />
-        <Route path=":packageId/:stepName" element={<FormRoute />} />
+        <Route
+          path="new/:stepName"
+          element={
+            <TenderPackageFormRoute
+              tenderPackages={tenderPackages}
+              stepNameToNumber={STEP_NAME_TO_NUMBER}
+              stepNames={STEP_NAMES}
+              onCreateAndContinue={handleCreateAndContinue}
+              onSaveAndContinue={handleSaveAndContinue}
+              onSaveAndExit={handleSavePackage}
+              onCancel={handleBackToList}
+            />
+          }
+        />
+        <Route
+          path=":packageId/:stepName"
+          element={
+            <TenderPackageFormRoute
+              tenderPackages={tenderPackages}
+              stepNameToNumber={STEP_NAME_TO_NUMBER}
+              stepNames={STEP_NAMES}
+              onCreateAndContinue={handleCreateAndContinue}
+              onSaveAndContinue={handleSaveAndContinue}
+              onSaveAndExit={handleSavePackage}
+              onCancel={handleBackToList}
+            />
+          }
+        />
         <Route path="*" element={<Navigate to="/tenderpackages" replace />} />
       </Routes>
     </div>
   );
 }
+       
