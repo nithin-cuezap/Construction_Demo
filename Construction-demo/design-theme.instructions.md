@@ -21,8 +21,8 @@ Use these rules whenever creating or editing UI components, views, or styles.
 ## Section Groupings
 
 - Use tinted panels for named section groupings.
-- Use a left accent border when sections are arranged side-by-side horizontally.
-- Use a top accent border when sections are stacked vertically.
+- Use a left accent border when sections are stacked vertically.
+- Use a top accent border when sections are arranged side-by-side horizontally.
 - Choose the accent direction based on the layout of the view, so the border reinforces the reading flow.
 - Keep the section title inside the tinted panel and place any helper note directly beneath the heading.
 - Reuse the same accent color family for the heading, border, and hover treatment within a section.
