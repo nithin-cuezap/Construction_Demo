@@ -1,6 +1,6 @@
 ---
 description: "Use when writing or refactoring TypeScript code. Covers SOLID principles, dependency management, simplicity, error handling, and documentation standards."
-applyTo: ["src/**/*.ts", "src/**/*.tsx"]
+applyTo: "src/**/*.{ts,tsx}"
 ---
 
 # Coding Standards
@@ -9,7 +9,10 @@ applyTo: ["src/**/*.ts", "src/**/*.tsx"]
 
 Apply SOLID principles pragmatically:
 
-- **Single Responsibility**: Each function/class has one clear purpose
+- **Single Responsibility**: Each function/class/component has one clear purpose
+  - React: One component per file, separate logic (hooks) from UI (components)
+  - Components over ~200-300 lines should be split
+  - Views orchestrate, components present, hooks contain logic
 - **Open/Closed**: Extend behavior through composition, not modification
 - **Liskov Substitution**: Subtypes must be substitutable for base types
 - **Interface Segregation**: Keep interfaces small and focused
@@ -17,152 +20,118 @@ Apply SOLID principles pragmatically:
 
 ## Dependency Management
 
-**Use Dependency Injection/Inversion of Control ONLY for application-wide objects:**
+- Use DI/IoC **ONLY** for app-wide objects (Database, API clients)
+- Don't inject simple utilities (formatters, validators, helpers)
+- For component-level logic, prefer direct imports and composition
+
+## React Component Architecture
+
+**One Component Per File Rule:**
+
+- Export ONE main component per file
+- Small helper components OK if only used in that file
+- Separate unrelated components into different files
+
+**Composition Pattern (for 200+ line components):**
 
 ```typescript
-// ✅ Good: Application-wide services
-interface Database {
-  query(sql: string): Promise<any>;
-}
-function createApp(db: Database) {
-  /* inject database */
-}
+// Split into:
+// 1. hooks/useFeature.ts - State and business logic
+// 2. components/FeatureForm.tsx - Form UI
+// 3. components/FeatureSuccess.tsx - Success UI
+// 4. views/FeatureView.tsx - Orchestration (50-100 lines)
 
-// ❌ Avoid: Over-engineering simple utilities
-// Don't inject formatters, validators, or simple helpers
-function formatDate(date: Date): string {
-  /* direct implementation */
+// View example:
+export default function FeatureView() {
+  const { data, handleSubmit, loading } = useFeature(id);
+  if (loading) return <Loading />;
+  if (data.submitted) return <FeatureSuccess data={data} />;
+  return <FeatureForm data={data} onSubmit={handleSubmit} />;
 }
 ```
 
-**For component-level logic, prefer direct imports and composition.**
+**When to Split:**
 
-## Simplicity Over Complexity
+- Component exceeds ~200-300 lines
+- Handles multiple distinct UI sections
+- Mixes business logic with presentation
+- Complex state obscures the UI
 
-- Choose the simplest solution that meets requirements
-- Avoid premature abstraction and over-engineering
-- Refactor when patterns emerge, not speculatively
-- Prefer pure functions over stateful classes when possible
-- Keep indirection minimal—favor clarity over clever patterns
+## Error Handling
 
-## Error Handling Patterns
-
-**Handle errors at the appropriate level:**
+**Use Result Types for Expected Failures:**
 
 ```typescript
-// ✅ Good: Handle at operation level, return Result types
-export async function submitBid(
-  bidData: BidInput,
-): Promise<Result<Bid, BidError>> {
-  try {
-    const validated = validateBid(bidData);
-    const saved = await db.bids.add(validated);
-    return { success: true, data: saved };
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      return {
-        success: false,
-        error: { type: "validation", message: error.message },
-      };
-    }
-    // Log unexpected errors, return generic message to user
-    console.error("Unexpected error in submitBid:", error);
-    return {
-      success: false,
-      error: { type: "unknown", message: "Failed to submit bid" },
-    };
-  }
-}
+type Result<T, E> = { success: true; data: T } | { success: false; error: E };
 
-// ❌ Avoid: Silent failures or swallowing errors
-try {
-  await riskyOperation();
-} catch {
-  // Don't ignore errors
-}
-```
-
-**Define domain-specific error types:**
-
-```typescript
-type BidError =
-  | { type: "validation"; message: string; field?: string }
-  | { type: "duplicate"; existingBidId: string }
-  | { type: "deadline_passed"; deadline: Date }
+// Define domain-specific errors
+type FeatureError =
+  | { type: "validation"; message: string }
+  | { type: "not_found"; resource: string }
   | { type: "unknown"; message: string };
 
-type Result<T, E> = { success: true; data: T } | { success: false; error: E };
-```
-
-**UI error handling:**
-
-```typescript
-// Show user-friendly messages, log technical details
-const result = await submitBid(bidData);
-if (!result.success) {
-  switch (result.error.type) {
-    case "validation":
-      showError(`Invalid input: ${result.error.message}`);
-      break;
-    case "deadline_passed":
-      showError("The submission deadline has passed");
-      break;
-    default:
-      showError("An unexpected error occurred. Please try again.");
+// Return Results, don't throw
+export async function submitFeature(
+  data: Input,
+): Promise<Result<Output, FeatureError>> {
+  try {
+    const result = await save(data);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Error in submitFeature:", error);
+    return { success: false, error: { type: "unknown", message: "Failed" } };
   }
+}
+
+// Handle in UI
+const result = await submitFeature(data);
+if (!result.success) {
+  showError(result.error.message); // User-friendly message
 }
 ```
 
-**Key principles:**
+**Key Rules:**
 
-- Return Result types instead of throwing exceptions for expected failures
-- Use try-catch for unexpected errors and I/O operations
-- Never silently swallow errors—log or handle them
-- Distinguish between user-facing messages and internal error details
-- Validate input early, fail fast with clear error messages
+- Result types for expected failures (validation, not found, etc.)
+- try-catch for unexpected errors and I/O
+- Never silently swallow errors
+- User-facing messages vs internal error details
+- Log unexpected errors, return generic messages to users
 
-## TSDoc Comments (Mandatory)
+## Documentation
 
-**All exported functions, classes, interfaces, and types require TSDoc:**
+**TSDoc Required for All Exports:**
 
 ````typescript
 /**
- * Calculates the total cost of materials for a tender package.
+ * Brief description of what the function does.
  *
- * @param materials - Array of materials with quantities and unit prices
- * @param taxRate - Tax rate as decimal (e.g., 0.15 for 15%)
- * @returns Total cost including tax
+ * @param paramName - Description
+ * @returns Description of return value
  *
  * @example
  * ```ts
- * const total = calculateMaterialCost(materials, 0.15);
+ * const result = myFunction(arg);
  * ```
  */
-export function calculateMaterialCost(
-  materials: Material[],
-  taxRate: number,
-): number {
+export function myFunction(paramName: Type): ReturnType {
   // implementation
 }
 ````
 
-**Internal/private functions should have concise comments explaining "why", not "what":**
+**Internal Functions: Explain "Why" Not "What":**
 
 ```typescript
-// Filter out expired bids before processing awards
-function removeExpiredBids(bids: Bid[]): Bid[] {
-  /* ... */
-}
+// Prevent race condition when rapid clicking
+const debouncedSubmit = debounce(handleSubmit, 300);
 ```
 
 ## Quick Checklist
 
-Before committing code, verify:
-
-- [ ] Each function/class has one clear responsibility
-- [ ] DI/IoC used only for app-wide objects (DB, API clients, etc.)
-- [ ] Solution is simple and meets current requirements
-- [ ] Errors are handled appropriately (Result types for expected failures)
-- [ ] User-facing error messages are clear and actionable
-- [ ] All exports have complete TSDoc comments
-- [ ] Internal logic has "why" comments for non-obvious decisions
+- [ ] Each function/class/component has one responsibility
+- [ ] React: One component/file, <300 lines, logic in hooks
+- [ ] DI only for app-wide objects
+- [ ] Result types for expected failures
+- [ ] User-facing errors are clear and actionable
+- [ ] All exports have TSDoc
+- [ ] Internal code has "why" comments for non-obvious logic
