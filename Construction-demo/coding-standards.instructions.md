@@ -21,12 +21,18 @@ Apply SOLID principles pragmatically:
 
 ```typescript
 // ✅ Good: Application-wide services
-interface Database { query(sql: string): Promise<any> }
-function createApp(db: Database) { /* inject database */ }
+interface Database {
+  query(sql: string): Promise<any>;
+}
+function createApp(db: Database) {
+  /* inject database */
+}
 
 // ❌ Avoid: Over-engineering simple utilities
 // Don't inject formatters, validators, or simple helpers
-function formatDate(date: Date): string { /* direct implementation */ }
+function formatDate(date: Date): string {
+  /* direct implementation */
+}
 ```
 
 **For component-level logic, prefer direct imports and composition.**
@@ -45,18 +51,26 @@ function formatDate(date: Date): string { /* direct implementation */ }
 
 ```typescript
 // ✅ Good: Handle at operation level, return Result types
-export async function submitBid(bidData: BidInput): Promise<Result<Bid, BidError>> {
+export async function submitBid(
+  bidData: BidInput,
+): Promise<Result<Bid, BidError>> {
   try {
     const validated = validateBid(bidData);
     const saved = await db.bids.add(validated);
     return { success: true, data: saved };
   } catch (error) {
     if (error instanceof ValidationError) {
-      return { success: false, error: { type: 'validation', message: error.message } };
+      return {
+        success: false,
+        error: { type: "validation", message: error.message },
+      };
     }
     // Log unexpected errors, return generic message to user
-    console.error('Unexpected error in submitBid:', error);
-    return { success: false, error: { type: 'unknown', message: 'Failed to submit bid' } };
+    console.error("Unexpected error in submitBid:", error);
+    return {
+      success: false,
+      error: { type: "unknown", message: "Failed to submit bid" },
+    };
   }
 }
 
@@ -71,15 +85,13 @@ try {
 **Define domain-specific error types:**
 
 ```typescript
-type BidError = 
-  | { type: 'validation'; message: string; field?: string }
-  | { type: 'duplicate'; existingBidId: string }
-  | { type: 'deadline_passed'; deadline: Date }
-  | { type: 'unknown'; message: string };
+type BidError =
+  | { type: "validation"; message: string; field?: string }
+  | { type: "duplicate"; existingBidId: string }
+  | { type: "deadline_passed"; deadline: Date }
+  | { type: "unknown"; message: string };
 
-type Result<T, E> = 
-  | { success: true; data: T }
-  | { success: false; error: E };
+type Result<T, E> = { success: true; data: T } | { success: false; error: E };
 ```
 
 **UI error handling:**
@@ -89,14 +101,14 @@ type Result<T, E> =
 const result = await submitBid(bidData);
 if (!result.success) {
   switch (result.error.type) {
-    case 'validation':
+    case "validation":
       showError(`Invalid input: ${result.error.message}`);
       break;
-    case 'deadline_passed':
-      showError('The submission deadline has passed');
+    case "deadline_passed":
+      showError("The submission deadline has passed");
       break;
     default:
-      showError('An unexpected error occurred. Please try again.');
+      showError("An unexpected error occurred. Please try again.");
   }
 }
 ```
@@ -113,14 +125,14 @@ if (!result.success) {
 
 **All exported functions, classes, interfaces, and types require TSDoc:**
 
-```typescript
+````typescript
 /**
  * Calculates the total cost of materials for a tender package.
- * 
+ *
  * @param materials - Array of materials with quantities and unit prices
  * @param taxRate - Tax rate as decimal (e.g., 0.15 for 15%)
  * @returns Total cost including tax
- * 
+ *
  * @example
  * ```ts
  * const total = calculateMaterialCost(materials, 0.15);
@@ -128,17 +140,19 @@ if (!result.success) {
  */
 export function calculateMaterialCost(
   materials: Material[],
-  taxRate: number
+  taxRate: number,
 ): number {
   // implementation
 }
-```
+````
 
 **Internal/private functions should have concise comments explaining "why", not "what":**
 
 ```typescript
 // Filter out expired bids before processing awards
-function removeExpiredBids(bids: Bid[]): Bid[] { /* ... */ }
+function removeExpiredBids(bids: Bid[]): Bid[] {
+  /* ... */
+}
 ```
 
 ## Quick Checklist
