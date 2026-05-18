@@ -47,8 +47,9 @@
  * @module components/FileUpload
  */
 
-import { FileText, Trash2, Upload } from 'lucide-react';
+import { Download, Eye, FileText, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
+import { isPreviewable } from '../utils/documentViewerUtils';
 import type { UploadedFile } from '../utils/fileUpload';
 import { formatFileSize } from '../utils/fileUpload';
 import Button from './Button';
@@ -78,6 +79,8 @@ interface FileUploadProps<T extends UploadedFile> {
   fileTypesDescription?: string;
   /** Render function for additional file metadata (e.g., comment field) */
   renderFileMetadata?: (file: T, disabled: boolean) => React.ReactNode;
+  /** Callback when preview button is clicked */
+  onFilePreview?: (file: T) => void;
 }
 
 /**
@@ -126,6 +129,7 @@ export default function FileUpload<T extends UploadedFile>({
   disabled = false,
   fileTypesDescription = 'Supports ZIP, PDF, and Word documents',
   renderFileMetadata,
+  onFilePreview,
 }: FileUploadProps<T>) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -253,7 +257,7 @@ export default function FileUpload<T extends UploadedFile>({
         />
         <Upload className="mx-auto mb-3 text-slate-400" size={40} />
         <p className="text-slate-700 font-medium mb-1">
-          {uploading ? 'Uploading...' : 'Drop files here or click to browse'}
+          {uploading ? 'Staging files...' : 'Drop files here or click to browse'}
         </p>
         <p className="text-sm text-slate-500">
           {fileTypesDescription} (max {formatFileSize(maxFileSize)})
@@ -270,7 +274,7 @@ export default function FileUpload<T extends UploadedFile>({
       {/* Uploaded Files List */}
       {files.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-slate-700">Uploaded Files ({files.length})</h3>
+          <h3 className="text-sm font-medium text-slate-700">Staged Files ({files.length})</h3>
           {files.map((file) => (
             <div
               key={file.id}
@@ -283,20 +287,73 @@ export default function FileUpload<T extends UploadedFile>({
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">{file.name}</p>
                     <p className="text-xs text-slate-500">
-                      {formatFileSize(file.size)} • Uploaded {new Date(file.uploadedAt).toLocaleString()}
+                      {formatFileSize(file.size)} • Staged {new Date(file.uploadedAt).toLocaleString()}
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onFileRemove(file.id)}
-                  disabled={disabled}
-                  className="shrink-0"
-                  type="button"
-                >
-                  <Trash2 size={14} />
-                </Button>
+                
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Preview Button - Show only for previewable files */}
+                  {(() => {
+                    const fileWithFile = file as T & { file?: File };
+                    const mimeType = fileWithFile.file?.type || file.type;
+                    return onFilePreview && mimeType && isPreviewable(mimeType) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onFilePreview(file)}
+                        disabled={disabled}
+                        title="Preview document"
+                        type="button"
+                      >
+                        <Eye size={16} />
+                      </Button>
+                    );
+                  })()}
+                  
+                  {/* Download Button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      // For UploadedDocument with file property, create blob URL
+                      const fileWithFile = file as T & { file?: File };
+                      const fileObj = fileWithFile.file;
+                      if (fileObj && fileObj instanceof File) {
+                        const blobUrl = URL.createObjectURL(fileObj);
+                        const link = document.createElement('a');
+                        link.href = blobUrl;
+                        link.download = file.name;
+                        link.click();
+                        URL.revokeObjectURL(blobUrl);
+                      } else if (file.url) {
+                        const link = document.createElement('a');
+                        link.href = file.url;
+                        link.download = file.name;
+                        link.click();
+                      }
+                    }}
+                    disabled={disabled}
+                    title="Download file"
+                    type="button"
+                  >
+                    <Download size={16} />
+                  </Button>
+                  
+                  {/* Remove Button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onFileRemove(file.id)}
+                    disabled={disabled}
+                    title="Remove file"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    type="button"
+                  >
+                    <Trash2 size={16} />
+                  </Button>
+                </div>
               </div>
 
               {/* Custom File Metadata (e.g., comments, tags, etc.) */}

@@ -11,9 +11,9 @@ import React from 'react';
 
 /**
  * Available button visual styles.
- * @typedef {'primary' | 'secondary' | 'outline'} ButtonVariant
+ * @typedef {'primary' | 'secondary' | 'outline' | 'ghost'} ButtonVariant
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'outline';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 
 /**
  * Available button sizes.
@@ -67,6 +67,8 @@ const variantStyles: Record<ButtonVariant, string> = {
     'text-white bg-purple-600 border border-purple-700 hover:bg-purple-700 active:bg-purple-800 focus:ring-purple-500 disabled:bg-purple-300',
   outline:
     'text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 active:bg-slate-100 focus:ring-slate-300 disabled:bg-slate-100',
+  ghost:
+    'text-slate-600 bg-transparent hover:bg-slate-100 active:bg-slate-200 focus:ring-slate-300 disabled:text-slate-400',
 };
 
 /**
