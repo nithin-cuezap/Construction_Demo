@@ -16,16 +16,7 @@
  */
 
 import { indexedDbApi } from "./indexedDb";
-import {
-  createInitialWorkItemsForPackage,
-  INITIAL_AWARDING_DATA,
-  INITIAL_BID_DATA,
-  INITIAL_PACKAGE_ID,
-  INITIAL_SELECTION_DATA,
-  INITIAL_SUBCONTRACTORS,
-  INITIAL_TENDER_PACKAGES,
-  INITIAL_WORKFLOW_STAGE,
-} from "./initial-data";
+import { generateSeedData } from "./seed";
 import type {
   AwardingDataState,
   BidDataState,
@@ -83,21 +74,25 @@ interface MockDbState {
 
 /**
  * The in-memory database state.
- * Initialized with demo/seed data from initial-data module or loaded from IndexedDB.
+ * Initialized empty and populated from seed data or loaded from IndexedDB.
  *
  * @constant {MockDbState} db
  * @private
  */
 const db: MockDbState = {
-  workflowStage: INITIAL_WORKFLOW_STAGE,
-  workItemsByPackageId: {
-    [INITIAL_PACKAGE_ID]: createInitialWorkItemsForPackage(INITIAL_PACKAGE_ID),
+  workflowStage: "TenderPackages",
+  workItemsByPackageId: {},
+  subcontractors: [],
+  selectionData: {
+    reviewByItemId: {},
   },
-  subcontractors: INITIAL_SUBCONTRACTORS,
-  selectionData: INITIAL_SELECTION_DATA,
-  bidData: INITIAL_BID_DATA,
-  awardingData: INITIAL_AWARDING_DATA,
-  tenderPackages: INITIAL_TENDER_PACKAGES,
+  bidData: {
+    bidRecords: [],
+  },
+  awardingData: {
+    decisionsByItemId: {},
+  },
+  tenderPackages: [],
 };
 
 /**
@@ -193,7 +188,19 @@ async function initializeDatabase(): Promise<void> {
           }
         }
       } else {
-        // No persisted data - save initial seed data to IndexedDB
+        // No persisted data - populate with seed data and save to IndexedDB
+        const seedData = generateSeedData();
+
+        // Update in-memory state with seed data
+        db.workflowStage = seedData.workflowStage;
+        db.workItemsByPackageId = seedData.workItemsByPackageId;
+        db.subcontractors = seedData.subcontractors;
+        db.selectionData = seedData.selectionData;
+        db.bidData = seedData.bidData;
+        db.awardingData = seedData.awardingData;
+        db.tenderPackages = seedData.tenderPackages;
+
+        // Save seed data to IndexedDB
         await Promise.all([
           indexedDbApi.setWorkflowStage(db.workflowStage),
           indexedDbApi.setSubcontractors(db.subcontractors),
@@ -300,15 +307,16 @@ export const mockDb = {
   },
 
   /**
-   * Ensures a tender package has work items, creating initial items if none exist.
+   * Ensures a tender package has work items array initialized.
+   * All packages (including tp-1 after first load) start with empty arrays.
    * Safe to call multiple times - will not overwrite existing work items.
    *
    * @param {string} tenderPackageId - The ID of the tender package
    */
   ensureWorkItemsForPackage(tenderPackageId: string) {
     if (!db.workItemsByPackageId[tenderPackageId]) {
-      db.workItemsByPackageId[tenderPackageId] =
-        createInitialWorkItemsForPackage(tenderPackageId);
+      // Initialize with empty array - seed data handles tp-1 initial items
+      db.workItemsByPackageId[tenderPackageId] = [];
     }
   },
 

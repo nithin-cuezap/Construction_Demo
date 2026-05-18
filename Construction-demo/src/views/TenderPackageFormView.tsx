@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
-  areAllWorkItemsShortlistingCompleted,
-  getSelectionViewData,
-  isAnyWorkItemInvitationSent,
+    areAllWorkItemsShortlistingCompleted,
+    getSelectionViewData,
+    isAnyWorkItemInvitationSent,
 } from '../Selection.ops';
 import { getNextPackageControlNumber } from '../TenderPackage.ops';
 import type { TenderPackage } from '../types';
@@ -12,9 +12,9 @@ import InvitationStep from './form-steps/InvitationStep';
 import PrimaryInformationStep from './form-steps/PrimaryInformationStep';
 import StatusStep from './form-steps/StatusStep';
 import type {
-  TenderPackageFormData,
-  TenderPackageStep,
-  UploadedDocument,
+    TenderPackageFormData,
+    TenderPackageStep,
+    UploadedDocument,
 } from './form-steps/TenderPackageForm.types';
 import SelectionView from './SelectionView';
 
@@ -125,7 +125,13 @@ export default function TenderPackageFormView({
       workflowStage: currentStep,
       status: STEP_STATUS[currentStep],
       documents: uploadedDocuments.map(({ file, ...doc }) => {
-        void file;
+        // Create blob URL at save time if file exists and URL is not yet created
+        if (file && !doc.url) {
+          return {
+            ...doc,
+            url: URL.createObjectURL(file),
+          };
+        }
         return doc;
       }),
       createdAt: editingPackage?.createdAt || new Date().toISOString(),

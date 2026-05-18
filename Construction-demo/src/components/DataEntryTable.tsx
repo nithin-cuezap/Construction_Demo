@@ -16,6 +16,17 @@
 
 import type { HTMLInputTypeAttribute, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  createCellDoubleClickHandler,
+  createEditorKeyDownHandler,
+  createRowArrowNavigationHandler,
+  createRowClickHandler,
+  createRowDoubleClickHandler,
+  createRowEnterHandler,
+  type FocusTarget,
+  type InteractionHandlerContext,
+} from './DataTableInteractionHandler';
+import EditableRow from './EditableRow';
 
 /**
  * Result object returned when committing a row edit.
@@ -23,28 +34,20 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
  * 
  * @interface CommitEditResult
  */
-interface CommitEditResult {
+export interface CommitEditResult {
   /** Whether the row edit was successfully saved */
   saved: boolean;
   /** ID of the row to focus next (if applicable) */
   nextRowId?: string;
   /** Whether to enter edit mode on the next row (if applicable) */
   nextRowEdit?: boolean;
+  /** Validation error message (if save failed) */
+  error?: string;
+  /** Column ID where the error occurred (to maintain focus) */
+  errorColumnId?: string;
 }
 
-/**
- * Internal focus target specification for managing focus after operations.
- * @typedef {Object} FocusTarget
- * @private
- */
-type FocusTarget = {
-  /** ID of the row to focus */
-  rowId: string;
-  /** Focus mode: row-level, first editor, or specific editor */
-  mode: 'row' | 'first-editor' | 'editor';
-  /** Column ID for editor-specific focus */
-  columnId?: string;
-};
+
 
 /**
  * Context object provided to custom cell edit renderers.
@@ -179,12 +182,29 @@ export default function DataEntryTable<Row>({
   // Generate unique table ID for DOM queries
   const tableId = useId();
   const [pendingFocus, setPendingFocus] = useState<FocusTarget | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Map<string, string>>(new Map());
 
   // Calculate CSS grid template from column spans
   const gridTemplateColumns = useMemo(
     () => columns.map((column) => `${column.colSpan ?? 1}fr`).join(' '),
     [columns],
   );
+
+  const clearValidationError = useCallback((rowIdValue: string) => {
+    setValidationErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(rowIdValue);
+      return next;
+    });
+  }, []);
+
+  const setValidationError = useCallback((rowIdValue: string, error: string) => {
+    setValidationErrors((prev) => {
+      const next = new Map(prev);
+      next.set(rowIdValue, error);
+      return next;
+    });
+  }, []);
 
   /**
    * Attempts to focus a specific target element in the table.
@@ -243,9 +263,9 @@ export default function DataEntryTable<Row>({
     return true;
   }, [columns, isRowEditing, rowId, rows, tableId]);
 
-  const queueFocus = (target: FocusTarget) => {
+  const queueFocus = useCallback((target: FocusTarget) => {
     setPendingFocus({ ...target });
-  };
+  }, []);
 
   useEffect(() => {
     if (!pendingFocus) return;
@@ -255,127 +275,73 @@ export default function DataEntryTable<Row>({
     });
   }, [pendingFocus, tryFocusTarget]);
 
-  const getEditableColumnIndexes = (row: Row, rowIndex: number): number[] =>
-    columns.reduce<number[]>((acc, column, columnIndex) => {
-      if (!column.edit) return acc;
-      const editable = column.edit.isEditable ? column.edit.isEditable(row, rowIndex) : true;
-      if (editable) acc.push(columnIndex);
-      return acc;
-    }, []);
+  // Create interaction handler context
+  const handlerContext: InteractionHandlerContext<Row> = useMemo(
+    () => ({
+      rows,
+      rowId,
+      columns,
+      isRowEditing,
+      tableId,
+      queueFocus,
+      onActiveRowChange,
+      onEnterRowEdit,
+      onCancelRowEdit,
+      onCommitRowEdit,
+      isNewRow,
+      clearValidationError,
+      setValidationError,
+    }),
+    [
+      rows,
+      rowId,
+      columns,
+      isRowEditing,
+      tableId,
+      queueFocus,
+      onActiveRowChange,
+      onEnterRowEdit,
+      onCancelRowEdit,
+      onCommitRowEdit,
+      isNewRow,
+      clearValidationError,
+      setValidationError,
+    ],
+  );
 
-  const handleRowArrowNavigation = (row: Row, event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  // Create interaction handlers
+  const handleRowArrowNavigation = useMemo(
+    () => createRowArrowNavigationHandler(handlerContext),
+    [handlerContext],
+  );
+  const handleRowEnter = useMemo(
+    () => createRowEnterHandler(handlerContext),
+    [handlerContext],
+  );
+  const handleEditorKeyDown = useMemo(
+    () => createEditorKeyDownHandler(handlerContext),
+    [handlerContext],
+  );
+  const handleRowClick = useMemo(
+    () => createRowClickHandler(handlerContext),
+    [handlerContext],
+  );
+  const handleRowDoubleClick = useMemo(
+    () => createRowDoubleClickHandler(handlerContext),
+    [handlerContext],
+  );
+  const handleCellDoubleClick = useMemo(
+    () => createCellDoubleClickHandler(handlerContext),
+    [handlerContext],
+  );
 
-    event.preventDefault();
-    const currentIndex = rows.findIndex((entry) => rowId(entry) === rowId(row));
-    if (currentIndex < 0) return;
-
-    const targetIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= rows.length) return;
-
-    const targetRow = rows[targetIndex];
-    onActiveRowChange?.(targetRow);
-    queueFocus({ rowId: rowId(targetRow), mode: 'row' });
-  };
-
-  const handleRowEnter = (row: Row, event: KeyboardEvent<HTMLDivElement>) => {
-    console.log('[DataEntryTable] handleRowEnter - key:', event.key, 'target===currentTarget:', event.target === event.currentTarget, 'isEditing:', isRowEditing(row));
-    if (event.target !== event.currentTarget) {
-      console.log('[DataEntryTable] handleRowEnter - SKIPPED: target !== currentTarget');
-      return;
-    }
-    if (event.key !== 'Enter') {
-      console.log('[DataEntryTable] handleRowEnter - SKIPPED: key is not Enter');
-      return;
-    }
-    if (isRowEditing(row) || !onEnterRowEdit) {
-      console.log('[DataEntryTable] handleRowEnter - SKIPPED: already editing or no callback');
-      return;
-    }
-
-    console.log('[DataEntryTable] handleRowEnter - TRIGGERED - calling onEnterRowEdit');
-    event.preventDefault();
-    onEnterRowEdit(row);
-    queueFocus({ rowId: rowId(row), mode: 'first-editor' });
-  };
-
-  const handleEditorKeyDown = (
-    row: Row,
-    rowIndex: number,
-    columnIndex: number,
-    event: KeyboardEvent<HTMLElement>,
-  ) => {
-    console.log('[DataEntryTable] handleEditorKeyDown - key:', event.key, 'rowIndex:', rowIndex, 'columnIndex:', columnIndex);
-    
-    if (event.key === 'Escape') {
-      console.log('[DataEntryTable] handleEditorKeyDown - Escape detected - calling onCancelRowEdit');
-      event.preventDefault();
-      event.stopPropagation();
-      onCancelRowEdit?.(row);
-      
-      // If this is a new row being deleted, focus on the previous row
-      if (isNewRow?.(row)) {
-        if (rowIndex > 0) {
-          const previousRow = rows[rowIndex - 1];
-          queueFocus({ rowId: rowId(previousRow), mode: 'row' });
-        }
-      } else {
-        queueFocus({ rowId: rowId(row), mode: 'row' });
-      }
-      return;
-    }
-
-    if (event.key !== 'Enter') {
-      console.log('[DataEntryTable] handleEditorKeyDown - SKIPPED: key is not Enter or Escape');
-      return;
-    }
-
-    console.log('[DataEntryTable] handleEditorKeyDown - Enter detected');
-    event.preventDefault();
-    event.stopPropagation();
-
-    const editableColumns = getEditableColumnIndexes(row, rowIndex);
-    const currentEditableIndex = editableColumns.findIndex((index) => index === columnIndex);
-    const nextColumnIndex =
-      currentEditableIndex >= 0 ? editableColumns[currentEditableIndex + 1] : undefined;
-
-    if (nextColumnIndex !== undefined) {
-      console.log('[DataEntryTable] handleEditorKeyDown - Moving to next column:', nextColumnIndex);
-      const nextColumn = columns[nextColumnIndex];
-      const rowElement = document.querySelector<HTMLElement>(
-        `[data-entry-table="${tableId}"] [data-entry-row="${rowId(row)}"]`,
-      );
-      const nextEditorElement = rowElement?.querySelector<HTMLElement>(
-        `[data-entry-editor="${nextColumn.id}"]`,
-      );
-      if (nextEditorElement) {
-        nextEditorElement.focus();
-      } else {
-        queueFocus({ rowId: rowId(row), mode: 'editor', columnId: nextColumn.id });
-      }
-      return;
-    }
-
-    console.log('[DataEntryTable] handleEditorKeyDown - Committing row edit');
-    const result = onCommitRowEdit?.(row, { isLastRow: rowIndex === rows.length - 1 });
-    if (!result?.saved) {
-      console.log('[DataEntryTable] handleEditorKeyDown - Commit not saved');
-      return;
-    }
-
-    if (result.nextRowId) {
-      console.log('[DataEntryTable] handleEditorKeyDown - Moving to next row:', result.nextRowId);
-      queueFocus({ rowId: result.nextRowId, mode: result.nextRowEdit ? 'first-editor' : 'row' });
-      return;
-    }
-
-    const nextRow = rows[rowIndex + 1];
-    if (nextRow) {
-      console.log('[DataEntryTable] handleEditorKeyDown - Focusing next row');
-      queueFocus({ rowId: rowId(nextRow), mode: 'row' });
-    }
-  };
+  const handleRowKeyDown = useCallback(
+    (row: Row, event: KeyboardEvent<HTMLDivElement>) => {
+      handleRowArrowNavigation(row, event);
+      handleRowEnter(row, event);
+    },
+    [handleRowArrowNavigation, handleRowEnter],
+  );
 
   return (
     <div className={tableBodyClassName} data-entry-table={tableId} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -398,103 +364,31 @@ export default function DataEntryTable<Row>({
           const isEditing = isRowEditing(row);
           const isActive = activeRowId === id;
           const computedRowClassName = getRowClassName?.(row, isActive) ?? '';
+          const validationError = validationErrors.get(id);
 
           return (
-            <div
+            <EditableRow
               key={id}
-              tabIndex={0}
-              data-entry-row={id}
-              onClick={(event) => {
-                console.log('[DataEntryTable] Row clicked:', id);
-                (event.currentTarget as HTMLElement).focus();
-                console.log('[DataEntryTable] Row focused after click');
-                onActiveRowChange?.(row);
-              }}
-              onDoubleClick={() => {
-                console.log('[DataEntryTable] Row double-clicked:', id);
-                if (!isEditing && onEnterRowEdit) {
-                  onEnterRowEdit(row);
-                  queueFocus({ rowId: id, mode: 'first-editor' });
-                }
-              }}
-              onKeyDown={(event) => {
-                console.log('[DataEntryTable] Row onKeyDown fired:', event.key, 'rowId:', id);
-                handleRowArrowNavigation(row, event);
-                handleRowEnter(row, event);
-              }}
-              className={`group w-full px-4 py-3 border-b border-slate-200 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-blue-500 ${rowClassName ?? ''} ${computedRowClassName}`}
-            >
-              <div
-                className="grid gap-3 items-center text-xs xl:text-sm"
-                style={{ gridTemplateColumns }}
-              >
-                {columns.map((column, columnIndex) => {
-                  const editorConfig = column.edit;
-                  const editable =
-                    !!editorConfig &&
-                    (editorConfig.isEditable
-                      ? editorConfig.isEditable(row, rowIndex)
-                      : true);
-
-                  const cellContent =
-                    isEditing && editorConfig && editable
-                      ? (() => {
-                          const value = editorConfig.getValue(row);
-                          const onChange = (nextValue: string) => editorConfig.setValue(row, nextValue);
-                          const onClick = (event: MouseEvent<HTMLElement>) => event.stopPropagation();
-                          const onKeyDownInput = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-                            handleEditorKeyDown(row, rowIndex, columnIndex, event as unknown as KeyboardEvent<HTMLElement>);
-                          };
-
-                          if (editorConfig.render) {
-                            return editorConfig.render({
-                              row,
-                              rowIndex,
-                              editorId: column.id,
-                              value,
-                              onChange,
-                              onClick,
-                              onKeyDown: (event: KeyboardEvent<HTMLElement>) =>
-                                onKeyDownInput(event as unknown as KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>),
-                            });
-                          }
-
-                  return (
-                    <input
-                      data-entry-editor={column.id}
-                      type={editorConfig.inputType ?? 'text'}
-                      value={value}
-                      onChange={(event) => onChange(event.target.value)}
-                      onClick={onClick}
-                      onKeyDown={onKeyDownInput}
-                      autoFocus
-                      placeholder={editorConfig.placeholder}
-                      className={
-                        editorConfig.className ??
-                        'w-full px-3 py-2 border border-slate-300 rounded-md text-xs xl:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
-                      }
-                    />
-                  );
-                })()
-              : column.renderCell(row, rowIndex);
-
-            return (
-              <div
-                key={column.id}
-                className={`min-w-0 ${column.cellClassName || ''}`}
-              >
-                {cellContent}
-              </div>
-            );
-                })}
-              </div>
-            </div>
+              row={row}
+              rowIndex={rowIndex}
+              id={id}
+              isEditing={isEditing}
+              isActive={isActive}
+              columns={columns}
+              gridTemplateColumns={gridTemplateColumns}
+              computedRowClassName={computedRowClassName}
+              rowClassName={rowClassName}
+              validationError={validationError}
+              onRowClick={handleRowClick}
+              onRowDoubleClick={handleRowDoubleClick}
+              onRowKeyDown={handleRowKeyDown}
+              createCellDoubleClickHandler={handleCellDoubleClick}
+              onEditorKeyDown={handleEditorKeyDown}
+            />
           );
         })}
       </div>
     </div>
   );
 }
-
-export type { CommitEditResult };
 

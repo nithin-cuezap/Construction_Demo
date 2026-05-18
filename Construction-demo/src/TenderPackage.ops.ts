@@ -94,6 +94,7 @@ export function savePackage(
     ...packageWithTransition,
     createdAt: new Date().toISOString(),
   };
+  // Initialize new packages with an empty work items array
   mockDb.ensureWorkItemsForPackage(packageToInsert.id);
 
   // Append to the end of the list

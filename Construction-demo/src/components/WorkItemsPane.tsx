@@ -1,5 +1,5 @@
 import { HardHat, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Assignment, WorkItem, WorkItem as WorkItemType } from '../types';
 import Button from './Button';
 import type { CommitEditResult, DataEntryColumn } from './DataEntryTable';
@@ -19,7 +19,7 @@ const isDraftRow = (row: UnifiedRow): row is DraftWorkItemRow => !isWorkItem(row
 
 interface WorkItemsPaneProps {
   workItems: WorkItemType[];
-  activeItem: WorkItemType;
+  activeItem: WorkItemType | undefined;
   setActiveItem: (item: WorkItemType) => void;
   getStatusColor: (status: WorkItem["status"]) => string;
   setWorkItemStatuses: (updates: Array<{ id: string; status: WorkItem["status"] }>) => void;
@@ -46,6 +46,25 @@ export default function WorkItemsPane({
   const [editingSectionName, setEditingSectionName] = useState('');
   const [editingDescription, setEditingDescription] = useState('');
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [pendingFocusRowId, setPendingFocusRowId] = useState<string | null>(null);
+
+  // Focus the first editor when a new draft row is added
+  useEffect(() => {
+    if (!pendingFocusRowId) return;
+    
+    // Wait for next tick to ensure DOM is updated
+    const timer = setTimeout(() => {
+      const firstEditor = document.querySelector<HTMLInputElement>(
+        `[data-entry-row="${pendingFocusRowId}"] [data-entry-editor="sectionCode"]`
+      );
+      if (firstEditor) {
+        firstEditor.focus();
+        setPendingFocusRowId(null);
+      }
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }, [pendingFocusRowId, draftRows, editingItemId]);
 
   const canFinalizeWorkItem = (status: WorkItem['status']) =>
     status !== 'Draft' && status !== 'Shortlisting Completed' && status !== 'Invited' && status !== 'Invited - Partial';
@@ -71,6 +90,10 @@ export default function WorkItemsPane({
         description: '',
       },
     ]);
+    // Automatically enter edit mode for the new draft row
+    setEditingItemId(newId);
+    // Queue focus for the first editor
+    setPendingFocusRowId(newId);
     return newId;
   };
 
@@ -106,10 +129,17 @@ export default function WorkItemsPane({
 
   const saveEditRow = (row: UnifiedRow): boolean => {
     console.log('[WorkItemsPane] saveEditRow called for:', row.id);
-    const sectionCode = editingSection.trim();
-    const sectionName = editingSectionName.trim();
-    const description = editingDescription.trim();
-    if (!sectionCode || !sectionName || !description) {
+    
+    // For draft rows, read from the row itself; for work items, read from editing state
+    const sectionCode = isDraftRow(row) ? row.sectionCode.trim() : editingSection.trim();
+    const sectionName = isDraftRow(row) ? row.sectionName.trim() : editingSectionName.trim();
+    const description = isDraftRow(row) ? row.description.trim() : editingDescription.trim();
+    
+    const sectionCodeValid = !sectionCode || sectionCode.length === 0;
+    const sectionNameValid = !sectionName || sectionName.length === 0;
+    const descriptionValid = !description || description.length === 0;
+    
+    if (sectionCodeValid || sectionNameValid || descriptionValid) {
       console.log('[WorkItemsPane] saveEditRow - validation failed');
       return false;
     }
@@ -117,14 +147,7 @@ export default function WorkItemsPane({
     if (isWorkItem(row)) {
       onUpdateWorkItem(row.id, sectionCode, sectionName, description);
     } else {
-      const sectionCodeValid = sectionCode.length > 0;
-      const sectionNameValid = sectionName.length > 0;
-      const descriptionValid = description.length > 0;
-      if (sectionCodeValid && sectionNameValid && descriptionValid) {
-        onAddWorkItem(sectionCode, sectionName, description);
-      } else {
-        return false;
-      }
+      onAddWorkItem(sectionCode, sectionName, description);
       setDraftRows((prev) => prev.filter((draft) => draft.id !== row.id));
     }
 
@@ -155,7 +178,12 @@ export default function WorkItemsPane({
         <span className="font-medium text-slate-700 truncate block">{row.sectionCode}</span>
       ),
       edit: {
-        getValue: (row) => row.sectionCode,
+        getValue: (row) => {
+          if (isWorkItem(row) && editingItemId === row.id) {
+            return editingSection;
+          }
+          return row.sectionCode;
+        },
         setValue: (row, value) => {
           if (isWorkItem(row)) {
             setEditingSection(value);
@@ -174,7 +202,12 @@ export default function WorkItemsPane({
         <span className="text-slate-700 truncate block">{row.sectionName}</span>
       ),
       edit: {
-        getValue: (row) => row.sectionName,
+        getValue: (row) => {
+          if (isWorkItem(row) && editingItemId === row.id) {
+            return editingSectionName;
+          }
+          return row.sectionName;
+        },
         setValue: (row, value) => {
           if (isWorkItem(row)) {
             setEditingSectionName(value);
@@ -193,7 +226,12 @@ export default function WorkItemsPane({
         <span className="text-slate-900 truncate block">{row.description}</span>
       ),
       edit: {
-        getValue: (row) => row.description,
+        getValue: (row) => {
+          if (isWorkItem(row) && editingItemId === row.id) {
+            return editingDescription;
+          }
+          return row.description;
+        },
         setValue: (row, value) => {
           if (isWorkItem(row)) {
             setEditingDescription(value);
@@ -351,28 +389,40 @@ export default function WorkItemsPane({
         </h2>
         <div className="flex items-center gap-2">
           <span className="text-[11px] xl:text-xs font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded-md">{workItems.length}</span>
-          <Button variant="outline" size="xs" className="inline-flex items-center gap-1" onClick={startAddRow}>
-            <Plus size={12} />
+          <Button variant="primary" size="xs" className="inline-flex items-center gap-1.5" onClick={startAddRow}>
+            <Plus size={16} />
             Add
           </Button>
         </div>
       </div>
 
-      <DataEntryTable
-        rows={allRows}
-        rowId={(row) => row.id}
-        columns={columns}
-        activeRowId={activeRowId ?? activeItem.id}
-        onActiveRowChange={handleActiveRowChange}
-        isRowEditing={(row) => editingItemId === row.id}
-        onEnterRowEdit={handleEnterRowEdit}
-        onCancelRowEdit={handleCancelRowEdit}
-        onCommitRowEdit={handleCommitRowEdit}
-        isNewRow={isDraftRow}
-        getRowClassName={getRowClassName}
-        tableBodyClassName="overflow-y-auto flex-1 bg-slate-100/40"
-        rowClassName=""
-      />
+      {workItems.length === 0 && draftRows.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center bg-slate-50/80 p-8">
+          <div className="text-center max-w-md">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 mb-3">
+              <Plus size={24} className="text-blue-600" />
+            </div>
+            <h3 className="text-sm font-medium text-slate-700 mb-1">No work items yet</h3>
+            <p className="text-xs text-slate-500">Click the <strong>Add</strong> button above to create your first work item</p>
+          </div>
+        </div>
+      ) : (
+        <DataEntryTable
+          rows={allRows}
+          rowId={(row) => row.id}
+          columns={columns}
+          activeRowId={activeRowId ?? activeItem?.id ?? undefined}
+          onActiveRowChange={handleActiveRowChange}
+          isRowEditing={(row) => editingItemId === row.id}
+          onEnterRowEdit={handleEnterRowEdit}
+          onCancelRowEdit={handleCancelRowEdit}
+          onCommitRowEdit={handleCommitRowEdit}
+          isNewRow={isDraftRow}
+          getRowClassName={getRowClassName}
+          tableBodyClassName="overflow-y-auto flex-1 bg-slate-100/40"
+          rowClassName=""
+        />
+      )}
 
       <div className="p-4 border-t border-slate-200 bg-white">
         <Button variant="primary" onClick={finalizeAll} disabled={!hasEligible} className="w-full">
