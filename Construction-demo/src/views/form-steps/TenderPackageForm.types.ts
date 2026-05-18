@@ -22,6 +22,7 @@ export interface TenderPackageFormData {
 
 export type UploadedDocument = TenderPackage["documents"][number] & {
   file: File | null;
+  status: "staged" | "uploaded";
 };
 
 export interface NominatimAddress {

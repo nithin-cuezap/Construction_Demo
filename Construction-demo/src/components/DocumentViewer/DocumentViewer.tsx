@@ -41,15 +41,16 @@ export default function DocumentViewer({
   onClose,
   onToggleFullscreen,
 }: DocumentViewerProps) {
-  // Create preview URL from File object using useMemo
+  // Create preview URL for download purposes only
+  // For PDF viewing, we'll pass the File object directly to react-pdf
   const previewUrl = useMemo(() => {
-    return document.file ? createPreviewUrl(document.file) : '';
-  }, [document.file]);
+    return document.file ? createPreviewUrl(document.file) : document.url;
+  }, [document.file, document.url]);
 
   // Cleanup: revoke URL when component unmounts or document changes
   useEffect(() => {
     return () => {
-      if (previewUrl) {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
         revokePreviewUrl(previewUrl);
       }
     };
@@ -57,8 +58,10 @@ export default function DocumentViewer({
 
   // Determine which viewer to use
   const viewerType = useMemo(() => {
-    return getDocumentViewerType(document.file?.type || '');
-  }, [document.file?.type]);
+    // Prefer stored mimeType, fallback to file.type
+    const mimeType = document.mimeType || document.file?.type || '';
+    return getDocumentViewerType(mimeType);
+  }, [document.mimeType, document.file?.type]);
 
   // Handle download
   const handleDownload = () => {
@@ -70,7 +73,7 @@ export default function DocumentViewer({
     }
   };
 
-  const fileTypeLabel = getFileTypeLabel(document.file?.type || '');
+  const fileTypeLabel = getFileTypeLabel(document.mimeType || document.file?.type || '');
   const isFullscreen = viewMode === 'fullscreen';
 
   return (
@@ -123,8 +126,8 @@ export default function DocumentViewer({
 
       {/* Viewer Content */}
       <div className="flex-1 overflow-auto bg-slate-100">
-        {viewerType === 'pdf' && previewUrl && (
-          <PDFViewer fileUrl={previewUrl} />
+        {viewerType === 'pdf' && document.file && (
+          <PDFViewer file={document.file} />
         )}
 
         {viewerType === 'office' && (
@@ -145,7 +148,7 @@ export default function DocumentViewer({
           />
         )}
 
-        {!previewUrl && (
+        {!document.file && viewerType !== 'unsupported' && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-slate-500">Loading preview...</p>
           </div>

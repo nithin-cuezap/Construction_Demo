@@ -285,9 +285,29 @@ export default function FileUpload<T extends UploadedFile>({
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <FileText className="text-blue-500 shrink-0 mt-1" size={20} />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-900 truncate">{file.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-900 truncate">{file.name}</p>
+                      {/* Status Indicator */}
+                      {(() => {
+                        const fileWithStatus = file as T & { status?: 'staged' | 'uploaded' };
+                        if (fileWithStatus.status === 'staged') {
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                              Staged
+                            </span>
+                          );
+                        } else if (fileWithStatus.status === 'uploaded') {
+                          return (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                              Uploaded
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                     <p className="text-xs text-slate-500">
-                      {formatFileSize(file.size)} • Staged {new Date(file.uploadedAt).toLocaleString()}
+                      {formatFileSize(file.size)} • {new Date(file.uploadedAt).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -296,8 +316,8 @@ export default function FileUpload<T extends UploadedFile>({
                 <div className="flex items-center gap-2 shrink-0">
                   {/* Preview Button - Show only for previewable files */}
                   {(() => {
-                    const fileWithFile = file as T & { file?: File };
-                    const mimeType = fileWithFile.file?.type || file.type;
+                    const fileWithFile = file as T & { file?: File; mimeType?: string };
+                    const mimeType = fileWithFile.mimeType || fileWithFile.file?.type || file.type;
                     return onFilePreview && mimeType && isPreviewable(mimeType) && (
                       <Button
                         variant="ghost"

@@ -236,6 +236,7 @@ export interface ContactDetails {
  * @property {string} uploadedAt - ISO 8601 timestamp when document was uploaded
  * @property {number} size - File size in bytes
  * @property {string} url - URL or path to access the document
+ * @property {string} mimeType - MIME type of the document for preview detection
  */
 export interface Document {
   id: string;
@@ -244,6 +245,7 @@ export interface Document {
   uploadedAt: string;
   size: number;
   url: string;
+  mimeType: string;
 }
 
 /**

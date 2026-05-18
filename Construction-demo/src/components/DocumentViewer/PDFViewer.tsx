@@ -16,13 +16,14 @@ import Button from '../Button';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
-  fileUrl: string;
+  file: File;
 }
 
 /**
  * PDF viewer component with page navigation and zoom controls.
+ * Accepts File object directly for better compatibility with react-pdf.
  */
-export default function PDFViewer({ fileUrl }: PDFViewerProps) {
+export default function PDFViewer({ file }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.0);
@@ -144,7 +145,7 @@ export default function PDFViewer({ fileUrl }: PDFViewerProps) {
           </div>
         ) : (
           <Document
-            file={fileUrl}
+            file={file}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
             loading={
